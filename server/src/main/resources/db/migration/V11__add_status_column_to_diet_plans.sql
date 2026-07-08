@@ -1,0 +1,2 @@
+ALTER TABLE diet_plans
+ADD COLUMN status varchar(20) NOT NULL DEFAULT 'ACTIVE';
