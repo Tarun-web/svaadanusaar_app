@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Transactional
@@ -42,8 +44,10 @@ public class SubscriptionService {
 
         Instant now = Instant.now();
 //        Instant endsAt = now.plus(plan.getMonths(), ChronoUnit.MONTHS);
-        Instant endsAt = Instant.from(LocalDateTime.now()
-                .plusMonths(plan.getMonths())); // For testing, 30 days instead of months
+        Instant endsAt = now
+                .atZone(ZoneId.systemDefault())
+                .plusMonths(plan.getMonths())
+                .toInstant(); // For testing, 30 days instead of months
 
         // Create new subscription
         UserSubscription newSubscription = new UserSubscription();
@@ -82,6 +86,67 @@ public class SubscriptionService {
                 now,
                 "CANCELLED"
         );
+    }
+
+    // Get current subscription status for a user
+    public SubscriptionStatusResponse getSubscriptionStatus(UUID userId) {
+        // First, check if subscription has expired and auto-update if needed
+        Optional<UserSubscription> sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+
+        if (sub.isPresent()) {
+            UserSubscription subscription = sub.get();
+            LocalDateTime endsAtLocal = subscription.getEndsAt()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime();
+
+            // If subscription has ended, mark as EXPIRED
+            if (LocalDateTime.now().isAfter(endsAtLocal)) {
+                subscription.setStatus("EXPIRED");
+                subscription.setUpdatedAt(Instant.now());
+                userSubscriptionRepository.save(subscription);
+
+                return new SubscriptionStatusResponse(
+                        subscription.getPlanId(),
+                        subscription.getStartsAt(),
+                        subscription.getEndsAt(),
+                        "EXPIRED"
+                );
+            }
+
+            return new SubscriptionStatusResponse(
+                    subscription.getPlanId(),
+                    subscription.getStartsAt(),
+                    subscription.getEndsAt(),
+                    "ACTIVE"
+            );
+        }
+
+        // No active subscription
+        return new SubscriptionStatusResponse(null, null, null, "NO_SUBSCRIPTION");
+    }
+
+    // Get subscription history for a user (all subscriptions, newest first)
+    public List<UserSubscription> getSubscriptionHistory(UUID userId) {
+        return userSubscriptionRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    // Background job: mark all expired subscriptions as EXPIRED (scheduled to run nightly)
+    @Transactional
+    public void markExpiredSubscriptions() {
+        List<UserSubscription> expiredSubs = userSubscriptionRepository
+                .findExpiredSubscriptions(Instant.now()
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDateTime());
+
+        for (UserSubscription sub : expiredSubs) {
+            sub.setStatus("EXPIRED");
+            sub.setUpdatedAt(Instant.now());
+        }
+
+        if (!expiredSubs.isEmpty()) {
+            userSubscriptionRepository.saveAll(expiredSubs);
+            System.out.println("Marked " + expiredSubs.size() + " subscriptions as EXPIRED");
+        }
     }
 
 

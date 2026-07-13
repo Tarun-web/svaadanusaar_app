@@ -1,0 +1,254 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+    "name": "DietApp - Complete Subscription & Payment Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Complete Postman collection for subscription lifecycle: auth -> plans -> create order -> verify -> check status -> history -> cancel"
+  },
+  "item": [
+    {
+      "name": "1 - OTP Verify (get JWT)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "pm.environment.set('authToken', json.token);",
+              "pm.environment.set('userId', json.userId);",
+              "console.log('✓ Saved authToken and userId');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/otp/verify",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","auth","otp","verify"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"otp\": \"{{otp}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2 - Get Active Plans",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "if (Array.isArray(json) && json.length > 0) { pm.environment.set('planId', json[0].id); }",
+              "console.log('✓ Saved planId:', pm.environment.get('planId'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/subscription/plans/active",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","subscription","plans","active"]
+        }
+      }
+    },
+    {
+      "name": "3 - Create Order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "pm.environment.set('orderId', json.orderId);",
+              "pm.environment.set('orderAmount', json.amount);",
+              "console.log('✓ Saved orderId:', json.orderId);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{authToken}}"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/create-order",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","payments","create-order"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"planId\": \"{{planId}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "4 - Verify Payment (simulate)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "var orderId = pm.environment.get('orderId');",
+              "if (!orderId) { throw new Error('orderId not set. Run Create Order first'); }",
+              "var paymentId = 'pay_' + Math.random().toString(36).substring(2, 12);",
+              "pm.environment.set('paymentId', paymentId);",
+              "var secret = pm.environment.get('razorpay_secret');",
+              "if (!secret) { throw new Error('razorpay_secret not set in environment'); }",
+              "var data = orderId + '|' + paymentId;",
+              "var signature = CryptoJS.HmacSHA256(data, secret).toString();",
+              "pm.environment.set('razorpaySignature', signature);",
+              "console.log('✓ Computed signature for', data);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Response text', function () { pm.response.to.have.text('Payment verified successfully'); });",
+              "console.log('✓ Payment verified; subscription activated');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{authToken}}"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/verify",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","payments","verify"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"razorpayOrderId\": \"{{orderId}}\",\n  \"razorpayPaymentId\": \"{{paymentId}}\",\n  \"razorpaySignature\": \"{{razorpaySignature}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "5 - Get Subscription Status",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "console.log('✓ Current subscription status:', json.status);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{authToken}}"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/subscription/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","subscription","status"]
+        }
+      }
+    },
+    {
+      "name": "6 - Get Subscription History",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "console.log('✓ Found ' + json.length + ' subscription(s)');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{authToken}}"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/subscription/history",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","subscription","history"]
+        }
+      }
+    },
+    {
+      "name": "7 - Cancel Subscription",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "var json = pm.response.json();",
+              "pm.test('Status is CANCELLED', function () { pm.expect(json.status).to.eql('CANCELLED'); });",
+              "console.log('✓ Subscription cancelled');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "Authorization", "value": "Bearer {{authToken}}"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/subscription/cancel",
+          "host": ["{{baseUrl}}"],
+          "path": ["api","v1","subscription","cancel"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8085"},
+    {"key": "phone", "value": "+911234567890"},
+    {"key": "otp", "value": "123456"},
+    {"key": "authToken", "value": ""},
+    {"key": "userId", "value": ""},
+    {"key": "planId", "value": ""},
+    {"key": "orderId", "value": ""},
+    {"key": "orderAmount", "value": ""},
+    {"key": "paymentId", "value": ""},
+    {"key": "razorpaySignature", "value": ""},
+    {"key": "razorpay_secret", "value": "Y8X46wl0J2G7gxZvbzWcSDB9"}
+  ]
+}
+

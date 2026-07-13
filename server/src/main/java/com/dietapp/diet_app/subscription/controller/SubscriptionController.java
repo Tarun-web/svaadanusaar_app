@@ -2,17 +2,15 @@ package com.dietapp.diet_app.subscription.controller;
 
 import com.dietapp.diet_app.subscription.dto.request.StartSubscriptionRequest;
 import com.dietapp.diet_app.subscription.dto.response.SubscriptionStatusResponse;
+import com.dietapp.diet_app.subscription.entity.UserSubscription;
 import com.dietapp.diet_app.subscription.service.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -36,5 +34,19 @@ public class SubscriptionController {
     public SubscriptionStatusResponse cancelSubscription(Authentication auth) {
         UUID userId = (UUID) auth.getPrincipal();
         return subscriptionService.cancelSubscription(userId);
+    }
+
+    // Get current subscription status
+    @GetMapping("/status")
+    public SubscriptionStatusResponse getSubscriptionStatus(Authentication auth) {
+        UUID userId = (UUID) auth.getPrincipal();
+        return subscriptionService.getSubscriptionStatus(userId);
+    }
+
+    // Get subscription history for a user
+    @GetMapping("/history")
+    public List<UserSubscription> getSubscriptionHistory(Authentication auth) {
+        UUID userId = (UUID) auth.getPrincipal();
+        return subscriptionService.getSubscriptionHistory(userId);
     }
 }
