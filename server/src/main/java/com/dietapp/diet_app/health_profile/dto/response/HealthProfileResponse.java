@@ -1,11 +1,8 @@
 package com.dietapp.diet_app.health_profile.dto.response;
 
-import com.dietapp.diet_app.health_profile.entity.*;
-
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -15,35 +12,32 @@ import java.util.UUID;
 @AllArgsConstructor
 public class HealthProfileResponse {
 
+    /**
+     * Health Profile Id.
+     */
     private UUID id;
 
+    /**
+     * Owner of the profile.
+     */
     private UUID userId;
 
-    private BasicProfile basicProfile;
+    /**
+     * Indicates whether onboarding
+     * has been completed.
+     */
+    private Boolean onboardingCompleted;
 
-    private GoalProfile goalProfile;
+    /**
+     * Completion percentage.
+     */
+    private Integer profileCompletionPercentage;
 
-    private LifestyleProfile lifestyleProfile;
-
-    private DietPreferenceProfile dietPreferenceProfile;
-
-    private CookingProfile cookingProfile;
-
-    private MedicalProfile medicalProfile;
-
-    private SupplementProfile supplementProfile;
-
-    private BehaviourProfile behaviourProfile;
-
-    private List<ActivityProfile> activities;
-
-    private Integer profileCompletion;
-
-    private HealthMetricsResponse metrics;
-
-    private List<HealthRecommendationResponse> recommendations;
-
+    /**
+     * Audit information.
+     */
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
 }

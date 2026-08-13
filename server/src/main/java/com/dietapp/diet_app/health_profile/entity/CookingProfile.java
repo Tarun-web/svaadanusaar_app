@@ -1,41 +1,116 @@
 package com.dietapp.diet_app.health_profile.entity;
+
+import com.dietapp.diet_app.common.entity.BaseEntity;
 import com.dietapp.diet_app.health_profile.enums.BudgetCategory;
 import com.dietapp.diet_app.health_profile.enums.CookingEquipment;
 import com.dietapp.diet_app.health_profile.enums.CookingSkill;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.*;
 
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
-@Embeddable
+@Entity
+@Table(
+        name = "cooking_profiles",
+        indexes = {
+                @Index(
+                        name = "idx_cooking_profile_health_profile",
+                        columnList = "health_profile_id",
+                        unique = true
+                )
+        }
+)
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CookingProfile {
+public class CookingProfile extends BaseEntity {
 
+    /**
+     * One Health Profile owns exactly one Cooking Profile.
+     */
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "health_profile_id",
+            nullable = false,
+            unique = true
+    )
+    private HealthProfile healthProfile;
+
+    /**
+     * User's cooking skill.
+     */
+    @Builder.Default
     @Enumerated(EnumType.STRING)
-    private CookingSkill cookingSkill;
+    @Column(nullable = false)
+    private CookingSkill cookingSkill = CookingSkill.BEGINNER;
 
-    private Integer cookingTimeMinutesPerDay;
+    /**
+     * Maximum cooking time user prefers.
+     *
+     * Minutes.
+     */
+    @Builder.Default
+    @Min(5)
+    @Max(180)
+    @Column(nullable = false)
+    private Integer cookingTimeMinutes = 30;
 
-    @Column(columnDefinition = "jsonb")
-    private List<CookingEquipment> equipments;  // stored as JSONB (enum names)
-
-    private Boolean mealPrep;
-
+    /**
+     * Kitchen appliances available.
+     */
+    @Builder.Default
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(
+            name = "cooking_profile_equipment",
+            joinColumns = @JoinColumn(name = "cooking_profile_id")
+    )
     @Enumerated(EnumType.STRING)
-    private BudgetCategory budget;
-//    ECONOMY
-//    ₹2000–3500/month
-//
-//            STANDARD
-//    ₹3500–7000
-//
-//    PREMIUM
-//    7000+
+    @Column(name = "equipment")
+    private Set<CookingEquipment> equipments = new HashSet<>();
+
+    /**
+     * Whether user is willing to do meal prep.
+     */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean mealPrep = false;
+
+    /**
+     * Monthly food budget category.
+     */
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private BudgetCategory budget = BudgetCategory.MEDIUM;
+
+    // ============================================================
+    // TODO (Future Enhancements)
+    // ============================================================
+
+    /*
+     * Future additions:
+     *
+     * CanCookDaily
+     *
+     * PreferredCookingDays
+     *
+     * PreferredCuisineToCook
+     *
+     * RefrigeratorCapacity
+     *
+     * FreezerCapacity
+     *
+     * KitchenType
+     *
+     * GasStoveAvailable
+     *
+     * InductionAvailable
+     *
+     * AirFryerAvailable
+     */
 }

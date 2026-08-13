@@ -1,34 +1,121 @@
 package com.dietapp.diet_app.health_profile.entity;
-import com.dietapp.diet_app.health_profile.enums.ActivityType;
-import com.dietapp.diet_app.health_profile.enums.ExperienceLevel;
-import com.dietapp.diet_app.health_profile.enums.WorkoutIntensity;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+
+import com.dietapp.diet_app.common.entity.BaseEntity;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
+import java.time.DayOfWeek;
 import java.time.LocalTime;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
-@Embeddable
+@Entity
+@Table(
+        name = "workout_profiles",
+        indexes = {
+                @Index(
+                        name = "idx_workout_profile_health_profile",
+                        columnList = "health_profile_id",
+                        unique = true
+                )
+        }
+)
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WorkoutProfile {
+public class WorkoutProfile extends BaseEntity {
 
-    @ElementCollection
-    List<ActivityProfile> activities;
-    private Integer averageDailySteps;
+    /**
+     * One Health Profile owns exactly one Workout Profile.
+     */
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "health_profile_id",
+            nullable = false,
+            unique = true
+    )
+    private HealthProfile healthProfile;
 
-    private LocalTime workoutTime;
+    /**
+     * User's workout activities.
+     *
+     * Examples:
+     * - Weight Training
+     * - Running
+     * - Cricket
+     * - Cycling
+     */
+    @Builder.Default
+    @OneToMany(
+            mappedBy = "workoutProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
+    )
+    private Set<ActivityProfile> activities = new HashSet<>();
 
-    private Boolean includePreWorkoutMeal;
+    /**
+     * Preferred workout time.
+     *
+     * Example:
+     * 06:00
+     * 18:30
+     */
+    private LocalTime preferredWorkoutTime;
 
-    private Boolean includePostWorkoutMeal;
+    /**
+     * Whether AI should include
+     * a pre-workout meal.
+     */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean includePreWorkoutMeal = true;
 
-    private Integer currentProteinIntake;
+    /**
+     * Whether AI should include
+     * a post-workout meal.
+     */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean includePostWorkoutMeal = true;
+
+    /**
+     * User's preferred weekly rest day.
+     */
+    @Enumerated(EnumType.STRING)
+    private DayOfWeek preferredRestDay;
+
+    // ============================================================
+    // TODO (Future Enhancements)
+    // ============================================================
+
+    /*
+     * Workout Split
+     *
+     * PUSH_PULL_LEGS
+     * UPPER_LOWER
+     * BRO_SPLIT
+     * FULL_BODY
+     */
+
+    /*
+     * Wearable Integrations
+     *
+     * Garmin
+     * Apple Health
+     * Google Fit
+     * Fitbit
+     */
+
+    /*
+     * Preferred Gym
+     *
+     * Home
+     * Commercial Gym
+     * Outdoor
+     */
 
 }

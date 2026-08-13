@@ -1,54 +1,109 @@
 package com.dietapp.diet_app.health_profile.entity;
 
+import com.dietapp.diet_app.common.entity.BaseEntity;
+import com.dietapp.diet_app.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
-import java.util.UUID;
-
 @Entity
-@Table(name = "health_profiles")
+@Table(
+        name = "health_profiles",
+        indexes = {
+                @Index(
+                        name = "idx_health_profile_user",
+                        columnList = "user_id",
+                        unique = true
+                )
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class HealthProfile {
+public class HealthProfile extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    /**
+     * One user has exactly one health profile.
+     */
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            unique = true
+    )
+    private User user;
 
-    private UUID userId;
+    /**
+     * Whether onboarding is completed.
+     */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean onboardingCompleted = false;
 
-    @Embedded
-    private BasicProfile basicProfile;
+    /**
+     * 0-100
+     * Calculated whenever profile changes.
+     */
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer profileCompletionPercentage = 0;
 
-    @Embedded
-    private GoalProfile goalProfile;
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private PersonalProfile personalProfile;
 
-    @Embedded
-    private LifestyleProfile lifestyleProfile;
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private FitnessGoalProfile fitnessGoalProfile;
 
-    @Embedded
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private NutritionPreferenceProfile nutritionPreferenceProfile;
+
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     private WorkoutProfile workoutProfile;
 
-    @Embedded
-    private DietPreferenceProfile dietPreferenceProfile;
-
-    @Embedded
-    private CookingProfile cookingProfile;
-
-    @Embedded
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     private MedicalProfile medicalProfile;
 
-    @Embedded
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private CookingProfile cookingProfile;
+
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private LifestylePreferenceProfile lifestylePreferenceProfile;
+
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     private SupplementProfile supplementProfile;
 
-    @Embedded
-    private BehaviourProfile behaviourProfile;
 
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 }
