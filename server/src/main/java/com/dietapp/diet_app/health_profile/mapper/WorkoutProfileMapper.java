@@ -11,11 +11,7 @@ import org.mapstruct.*;
 )
 public interface WorkoutProfileMapper {
 
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     WorkoutProfile toEntity(WorkoutProfileRequest request);
 
     @Mapping(source = "healthProfile.id", target = "healthProfileId")

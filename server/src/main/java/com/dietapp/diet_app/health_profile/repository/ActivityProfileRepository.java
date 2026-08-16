@@ -12,6 +12,5 @@ public interface ActivityProfileRepository
         extends JpaRepository<ActivityProfile, UUID> {
 
     List<ActivityProfile> findByWorkoutProfileId(UUID workoutProfileId);
-    boolean existsByHealthProfileId(UUID healthProfileId);
 
 }

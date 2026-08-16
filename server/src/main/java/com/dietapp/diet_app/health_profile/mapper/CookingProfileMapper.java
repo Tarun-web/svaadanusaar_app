@@ -11,11 +11,7 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface CookingProfileMapper {
 
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     CookingProfile toEntity(CookingProfileRequest request);
 
     @Mapping(source = "healthProfile.id", target = "healthProfileId")

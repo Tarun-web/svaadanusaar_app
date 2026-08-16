@@ -26,7 +26,8 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable) // Disable HTTP Basic authentication
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**", "/api/v1/subscription/**").permitAll() // Allow all auth endpoints and subscription plans endpoint
+                        .requestMatchers("/api/v1/auth/**",
+                                         "/api/v1/subscription/plans/**").permitAll() // Allow all auth endpoints and subscription plans endpoint
                         .anyRequest().authenticated() // All other endpoints require authentication
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

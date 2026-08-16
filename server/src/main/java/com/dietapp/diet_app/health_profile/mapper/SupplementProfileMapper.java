@@ -11,11 +11,7 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface SupplementProfileMapper {
 
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     SupplementProfile toEntity(SupplementProfileRequest request);
 
     @Mapping(source = "healthProfile.id", target = "healthProfileId")

@@ -11,11 +11,7 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring")
 public interface MedicalProfileMapper {
 
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     MedicalProfile toEntity(MedicalProfileRequest request);
 
     @Mapping(source = "healthProfile.id", target = "healthProfileId")

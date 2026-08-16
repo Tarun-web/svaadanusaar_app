@@ -12,11 +12,7 @@ public interface NutritionPreferenceMapper {
     /**
      * Request DTO → Entity
      */
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     NutritionPreferenceProfile toEntity(
             NutritionPreferenceRequest request
     );

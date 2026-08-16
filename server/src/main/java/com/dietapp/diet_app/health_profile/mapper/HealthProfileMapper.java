@@ -9,13 +9,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface HealthProfileMapper {
 
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "user", ignore = true)
     @Mapping(target = "onboardingCompleted", ignore = true)
     @Mapping(target = "profileCompletionPercentage", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
     HealthProfile toEntity(HealthProfileRequest request);
 
     @Mapping(source = "user.id", target = "userId")
