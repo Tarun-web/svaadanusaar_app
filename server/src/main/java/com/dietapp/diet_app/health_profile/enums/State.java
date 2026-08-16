@@ -1,0 +1,78 @@
+package com.dietapp.diet_app.health_profile.enums;
+
+public enum State {
+
+    ANDHRA_PRADESH,
+
+    ARUNACHAL_PRADESH,
+
+    ASSAM,
+
+    BIHAR,
+
+    CHHATTISGARH,
+
+    GOA,
+
+    GUJARAT,
+
+    HARYANA,
+
+    HIMACHAL_PRADESH,
+
+    JHARKHAND,
+
+    KARNATAKA,
+
+    KERALA,
+
+    MADHYA_PRADESH,
+
+    MAHARASHTRA,
+
+    MANIPUR,
+
+    MEGHALAYA,
+
+    MIZORAM,
+
+    NAGALAND,
+
+    ODISHA,
+
+    PUNJAB,
+
+    RAJASTHAN,
+
+    SIKKIM,
+
+    TAMIL_NADU,
+
+    TELANGANA,
+
+    TRIPURA,
+
+    UTTAR_PRADESH,
+
+    UTTARAKHAND,
+
+    WEST_BENGAL,
+
+    DELHI,
+
+    JAMMU_KASHMIR,
+
+    LADAKH,
+
+    CHANDIGARH,
+
+    PUDUCHERRY,
+
+    DADRA_NAGAR_HAVELI,
+
+    DAMAN_DIU,
+
+    LAKSHADWEEP,
+
+    ANDAMAN_NICOBAR
+}

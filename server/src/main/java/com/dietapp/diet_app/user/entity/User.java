@@ -1,5 +1,6 @@
 package com.dietapp.diet_app.user.entity;
 
+import com.dietapp.diet_app.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -23,11 +24,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+public class User extends BaseEntity {
 
     @Column(name = "name")
     private String name;
@@ -41,14 +38,6 @@ public class User {
     @Column(name = "is_blocked")
     @Builder.Default
     private Boolean isBlocked = false;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     private boolean emailVerified;
 
