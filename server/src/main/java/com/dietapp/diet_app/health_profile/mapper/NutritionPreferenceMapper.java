@@ -3,6 +3,7 @@ package com.dietapp.diet_app.health_profile.mapper;
 import com.dietapp.diet_app.health_profile.dto.request.NutritionPreferenceRequest;
 import com.dietapp.diet_app.health_profile.dto.response.NutritionPreferenceResponse;
 import com.dietapp.diet_app.health_profile.entity.NutritionPreferenceProfile;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -12,7 +13,6 @@ public interface NutritionPreferenceMapper {
     /**
      * Request DTO → Entity
      */
-    @Mapping(target = "healthProfile", ignore = true)
     NutritionPreferenceProfile toEntity(
             NutritionPreferenceRequest request
     );
@@ -20,10 +20,6 @@ public interface NutritionPreferenceMapper {
     /**
      * Entity → Response DTO
      */
-    @Mapping(
-            source = "healthProfile.id",
-            target = "healthProfileId"
-    )
     NutritionPreferenceResponse toResponse(
             NutritionPreferenceProfile entity
     );
@@ -31,11 +27,7 @@ public interface NutritionPreferenceMapper {
     /**
      * Update existing entity. No new object will be created
      */
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "healthProfile", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "version", ignore = true)
+    @InheritConfiguration(name = "toEntity")
     void updateEntity(
         NutritionPreferenceRequest request,
         @MappingTarget

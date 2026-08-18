@@ -6,15 +6,12 @@ import com.dietapp.diet_app.health_profile.entity.WorkoutProfile;
 import org.mapstruct.*;
 
 @Mapper(
-        componentModel = "spring",
-        uses = ActivityMapper.class
+        componentModel = "spring"
 )
 public interface WorkoutProfileMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     WorkoutProfile toEntity(WorkoutProfileRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     WorkoutProfileResponse toResponse(WorkoutProfile entity);
 
     @InheritConfiguration(name = "toEntity")

@@ -8,10 +8,8 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring")
 public interface PersonalProfileMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     PersonalProfile toEntity(PersonalProfileRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     PersonalProfileResponse toResponse(PersonalProfile entity);
 
     @InheritConfiguration(name = "toEntity")

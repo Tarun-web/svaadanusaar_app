@@ -9,6 +9,7 @@ import com.dietapp.diet_app.health_profile.mapper.FitnessGoalMapper;
 import com.dietapp.diet_app.health_profile.repository.FitnessGoalProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,57 +31,64 @@ public class FitnessGoalServiceImpl implements FitnessGoalService {
 
     private final HealthProfileContextService healthProfileContextService;
 
+    private final ProfileCompletionService profileCompletionService;
+
     // Extract authenticated user from JWT token
     private final AuthenticationFacade authenticationFacade;
 
     @Override
     public FitnessGoalResponse saveOrUpdate(FitnessGoalRequest request) {
 
-        // Extract current user from JWT token
-        UUID userId = authenticationFacade.getCurrentUserId();
-
-        HealthProfile healthProfile = healthProfileRepository
-                .findById(request.getHealthProfileId())
-                .orElseThrow(() ->
-                        new EntityNotFoundException(
-                                "Health Profile not found."
-                        )
-                );
-
-        // Verify ownership: health profile must belong to authenticated user
-        if (!healthProfile.getUser().getId().equals(userId)) {
-            throw new EntityNotFoundException(
-                    "Health Profile not found."
-            );
-        }
+        HealthProfile healthProfile =
+                healthProfileContextService
+                        .getCurrentUserHealthProfile();
 
         FitnessGoalProfile fitnessGoal =
                 fitnessGoalRepository
-                        .findByHealthProfileId(request.getHealthProfileId())
-                        .orElseGet(() -> {
+                        .findByHealthProfileId(
+                                healthProfile.getId()
+                        )
+                        .orElse(null);
 
-                            FitnessGoalProfile profile =
-                                    fitnessGoalMapper.toEntity(request);
+        /*
+         * CREATE
+         */
+        if (fitnessGoal == null) {
 
-                            profile.setHealthProfile(healthProfile);
+            fitnessGoal =
+                    fitnessGoalMapper.toEntity(request);
 
-                            return profile;
+            fitnessGoal.setHealthProfile(
+                    healthProfile
+            );
+        }
 
-                        });
-
-        if (fitnessGoal.getId() != null) {
+        /*
+         * UPDATE
+         */
+        else {
 
             fitnessGoalMapper.updateEntity(
                     request,
                     fitnessGoal
             );
-
         }
 
-        fitnessGoal = fitnessGoalRepository.save(fitnessGoal);
+        fitnessGoal =
+                fitnessGoalRepository.save(
+                        fitnessGoal
+                );
 
-        return fitnessGoalMapper.toResponse(fitnessGoal);
+        /*
+         * Recalculate overall HealthProfile completion.
+         */
+        profileCompletionService.refreshProfileCompletion(
+                healthProfile.getId()
+        );
 
+        return fitnessGoalMapper.toResponse(
+                fitnessGoal
+        );
     }
 
     @Transactional(readOnly = true)
@@ -92,7 +100,10 @@ public class FitnessGoalServiceImpl implements FitnessGoalService {
                 healthProfileContextService
                         .getCurrentUserHealthProfile();
 
-        return fitnessGoalRepository.findByHealthProfileId(healthProfile.getUser().getId())
+        return fitnessGoalRepository
+                .findByHealthProfileId(
+                        healthProfile.getId()
+                )
                 .map(fitnessGoalMapper::toResponse);
     }
 

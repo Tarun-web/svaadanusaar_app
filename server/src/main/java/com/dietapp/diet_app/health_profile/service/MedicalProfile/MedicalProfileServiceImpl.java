@@ -8,6 +8,7 @@ import com.dietapp.diet_app.health_profile.mapper.MedicalProfileMapper;
 import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.MedicalProfileRepository;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ public class MedicalProfileServiceImpl
         implements MedicalProfileService {
 
     private final MedicalProfileRepository medicalProfileRepository;
-    private final HealthProfileRepository healthProfileRepository;
+    private final ProfileCompletionService  profileCompletionService;
     private final MedicalProfileMapper medicalProfileMapper;
     private final HealthProfileContextService
     healthProfileContextService;
@@ -33,29 +34,34 @@ public class MedicalProfileServiceImpl
             MedicalProfileRequest request
     ) {
 
-        HealthProfile healthProfile = healthProfileRepository
-                .findById(request.getHealthProfileId())
-                .orElseThrow(() ->
-                        new EntityNotFoundException("Health Profile not found."));
+        HealthProfile healthProfile = healthProfileContextService
+                .getCurrentUserHealthProfile();
 
         MedicalProfile medicalProfile =
                 medicalProfileRepository
-                        .findByHealthProfileId(request.getHealthProfileId())
-                        .orElseGet(() -> {
+                        .findByHealthProfileId(healthProfile.getId())
+                        .orElse(null);
 
-                            MedicalProfile entity =
-                                    medicalProfileMapper.toEntity(request);
-
-                            entity.setHealthProfile(healthProfile);
-
-                            return entity;
-                        });
-
-        if (medicalProfile.getId() != null) {
+        // create
+        if(medicalProfile == null) {
+            medicalProfile = medicalProfileMapper.toEntity(request);
+            medicalProfile.setHealthProfile(healthProfile);
+        }
+        // update
+        else{
             medicalProfileMapper.updateEntity(request, medicalProfile);
         }
 
+
+
         medicalProfile = medicalProfileRepository.save(medicalProfile);
+
+        /*
+         * Recalculate overall HealthProfile completion.
+         */
+        profileCompletionService.refreshProfileCompletion(
+                healthProfile.getId()
+        );
 
         return medicalProfileMapper.toResponse(medicalProfile);
     }

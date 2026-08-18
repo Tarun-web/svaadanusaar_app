@@ -10,6 +10,7 @@ import com.dietapp.diet_app.health_profile.mapper.NutritionPreferenceMapper;
 import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.NutritionPreferenceProfileRepository;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,8 +27,7 @@ public class NutritionPreferenceServiceImpl
     private final NutritionPreferenceProfileRepository
             nutritionPreferenceRepository;
 
-    private final HealthProfileRepository
-            healthProfileRepository;
+    private final ProfileCompletionService  profileCompletionService;
 
     private final NutritionPreferenceMapper
             nutritionPreferenceMapper;
@@ -42,54 +42,64 @@ public class NutritionPreferenceServiceImpl
             NutritionPreferenceRequest request
     ) {
 
-        // Extract current user from JWT token
-        UUID userId = authenticationFacade.getCurrentUserId();
-
+        /*
+         * Get the Health Profile belonging to
+         * the currently authenticated user.
+         */
         HealthProfile healthProfile =
-                healthProfileRepository
-                        .findById(request.getHealthProfileId())
-                        .orElseThrow(() ->
-                                new EntityNotFoundException(
-                                        "Health Profile not found."
-                                ));
+                healthProfileContextService
+                        .getCurrentUserHealthProfile();
 
-        // Verify ownership: health profile must belong to authenticated user
-        if (!healthProfile.getUser().getId().equals(userId)) {
-            throw new EntityNotFoundException(
-                    "Health Profile not found."
-            );
-        }
-
+        /*
+         * Find existing Nutrition Preference Profile.
+         */
         NutritionPreferenceProfile profile =
                 nutritionPreferenceRepository
                         .findByHealthProfileId(
-                                request.getHealthProfileId()
+                                healthProfile.getId()
                         )
-                        .orElseGet(() -> {
+                        .orElse(null);
 
-                            NutritionPreferenceProfile entity =
-                                    nutritionPreferenceMapper
-                                            .toEntity(request);
+        /*
+         * CREATE
+         */
+        if (profile == null) {
 
-                            entity.setHealthProfile(healthProfile);
+            profile =
+                    nutritionPreferenceMapper
+                            .toEntity(request);
 
-                            return entity;
+            profile.setHealthProfile(
+                    healthProfile
+            );
+        }
 
-                        });
-
-        if (profile.getId() != null) {
+        /*
+         * UPDATE
+         */
+        else {
 
             nutritionPreferenceMapper.updateEntity(
                     request,
                     profile
             );
-
         }
 
-        profile = nutritionPreferenceRepository.save(profile);
+        /*
+         * Save profile.
+         */
+        profile =
+                nutritionPreferenceRepository.save(profile);
+
+        /*
+         * Recalculate Health Profile completion.
+         */
+        profileCompletionService
+                .refreshProfileCompletion(
+                        healthProfile.getId()
+                );
 
         return nutritionPreferenceMapper.toResponse(profile);
-
     }
 
     @Override

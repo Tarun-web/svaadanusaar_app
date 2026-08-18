@@ -10,6 +10,7 @@ import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.SupplementProfileRepository;
 import com.dietapp.diet_app.health_profile.service.AbstractHealthProfileSectionService;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,11 +26,8 @@ public class SupplementProfileServiceImpl implements SupplementProfileService {
 
     private final SupplementProfileRepository repository;
     private final SupplementProfileMapper mapper;
+    private final ProfileCompletionService profileCompletionService;
     private final HealthProfileContextService healthProfileContextService;
-
-    // Extract authenticated user from JWT token
-    private final AuthenticationFacade authenticationFacade;
-
 
 
     @Override
@@ -39,18 +37,22 @@ public class SupplementProfileServiceImpl implements SupplementProfileService {
 
         HealthProfile healthProfile = healthProfileContextService.getCurrentUserHealthProfile();
 
-        SupplementProfile supplementProfile = repository.findByHealthProfileId(request.getHealthProfileId())
-                .orElseGet(() -> {
-                    SupplementProfile profile = mapper.toEntity(request);
-                    profile.setHealthProfile(healthProfile);
-                    return profile;
-                });
+        SupplementProfile supplementProfile = repository.findByHealthProfileId(healthProfile.getId())
+                .orElse(null);
 
-        if(supplementProfile.getId() == null) {
+        if(supplementProfile == null) {
+            supplementProfile = mapper.toEntity(request);
+            supplementProfile.setHealthProfile(healthProfile);
+        } else {
             mapper.updateEntity(request, supplementProfile);
         }
 
         supplementProfile = repository.save(supplementProfile);
+
+        profileCompletionService.refreshProfileCompletion(
+                healthProfile.getId()
+        );
+
         return mapper.toResponse(supplementProfile);
 
     }

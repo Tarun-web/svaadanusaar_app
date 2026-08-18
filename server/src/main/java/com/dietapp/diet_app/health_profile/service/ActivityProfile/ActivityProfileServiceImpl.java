@@ -1,11 +1,13 @@
 package com.dietapp.diet_app.health_profile.service.ActivityProfile;
 
+import com.dietapp.diet_app.common.exception.BusinessException;
 import com.dietapp.diet_app.common.exception.ResourceNotFoundException;
 import com.dietapp.diet_app.health_profile.dto.request.ActivityRequest;
 import com.dietapp.diet_app.health_profile.dto.response.ActivityResponse;
 import com.dietapp.diet_app.health_profile.entity.ActivityProfile;
 import com.dietapp.diet_app.health_profile.entity.HealthProfile;
 import com.dietapp.diet_app.health_profile.entity.WorkoutProfile;
+import com.dietapp.diet_app.health_profile.enums.ActivityType;
 import com.dietapp.diet_app.health_profile.mapper.ActivityMapper;
 import com.dietapp.diet_app.health_profile.repository.ActivityProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.WorkoutProfileRepository;
@@ -41,6 +43,8 @@ public class ActivityProfileServiceImpl
             ActivityRequest request
     ) {
 
+
+        validateActivityRequest(request);
         /*
          * Get Health Profile of authenticated user
          * from JWT.
@@ -98,6 +102,7 @@ public class ActivityProfileServiceImpl
             ActivityRequest request
     ) {
 
+        validateActivityRequest(request);
         /*
          * Get authenticated user's Health Profile.
          */
@@ -217,5 +222,25 @@ public class ActivityProfileServiceImpl
                 .stream()
                 .map(activityMapper::toResponse)
                 .toList();
+    }
+
+    // helper
+    private void validateActivityRequest(ActivityRequest request) {
+
+        if (request.getActivityType() == ActivityType.SPORTS
+                && request.getSportType() == null) {
+
+            throw new BusinessException(
+                    "Sport type is required when activity type is SPORTS."
+            );
+        }
+
+        if (request.getActivityType() != ActivityType.SPORTS
+                && request.getSportType() != null) {
+
+            throw new BusinessException(
+                    "Sport type should only be provided for SPORTS activity."
+            );
+        }
     }
 }

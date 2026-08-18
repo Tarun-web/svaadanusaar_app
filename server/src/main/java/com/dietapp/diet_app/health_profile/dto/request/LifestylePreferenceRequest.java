@@ -12,9 +12,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class LifestylePreferenceRequest {
 
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
-
     @Builder.Default
     private Boolean hosteller = false;
 

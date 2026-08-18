@@ -15,9 +15,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class SupplementProfileRequest {
 
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
-
     @Builder.Default
     private Boolean openToSupplements = false;
 

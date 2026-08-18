@@ -11,10 +11,8 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface CookingProfileMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     CookingProfile toEntity(CookingProfileRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     CookingProfileResponse toResponse(CookingProfile entity);
 
     @InheritConfiguration(name = "toEntity")

@@ -19,9 +19,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CookingProfileRequest {
 
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
-
     @Builder.Default
     private CookingSkill cookingSkill = CookingSkill.BEGINNER;
 

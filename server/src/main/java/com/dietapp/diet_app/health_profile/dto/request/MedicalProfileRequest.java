@@ -17,9 +17,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class MedicalProfileRequest {
 
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
-
     @Builder.Default
     private Set<MedicalCondition> medicalConditions = new HashSet<>();
 

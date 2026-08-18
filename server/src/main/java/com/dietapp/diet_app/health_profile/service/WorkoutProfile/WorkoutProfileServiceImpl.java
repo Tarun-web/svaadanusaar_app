@@ -10,6 +10,7 @@ import com.dietapp.diet_app.health_profile.mapper.WorkoutProfileMapper;
 import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.WorkoutProfileRepository;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ public class WorkoutProfileServiceImpl
         implements WorkoutProfileService {
 
     private final WorkoutProfileRepository workoutProfileRepository;
-    private final HealthProfileRepository healthProfileRepository;
+    private final ProfileCompletionService  profileCompletionService;
     private final WorkoutProfileMapper workoutProfileMapper;
     private final HealthProfileContextService  healthProfileContextService;
 
@@ -36,39 +37,50 @@ public class WorkoutProfileServiceImpl
             WorkoutProfileRequest request
     ) {
 
-        // Extract current user from JWT token
-        UUID userId = authenticationFacade.getCurrentUserId();
+        HealthProfile healthProfile = healthProfileContextService.getCurrentUserHealthProfile();
 
-        HealthProfile healthProfile = healthProfileRepository
-                .findById(request.getHealthProfileId())
-                .orElseThrow(() ->
-                        new EntityNotFoundException("Health Profile not found."));
-
-        // Verify ownership: health profile must belong to authenticated user
-        if (!healthProfile.getUser().getId().equals(userId)) {
-            throw new EntityNotFoundException("Health Profile not found.");
-        }
-
-        WorkoutProfile workoutProfile =
+        // find existing workout profile
+        WorkoutProfile profile =
                 workoutProfileRepository
-                        .findByHealthProfileId(request.getHealthProfileId())
-                        .orElseGet(() -> {
+                        .findByHealthProfileId(
+                                healthProfile.getId())
+                        .orElse(null);
 
-                            WorkoutProfile entity =
-                                    workoutProfileMapper.toEntity(request);
+        // Create
+        if (profile == null) {
 
-                            entity.setHealthProfile(healthProfile);
+            profile =
+                    workoutProfileMapper
+                            .toEntity(request);
 
-                            return entity;
-                        });
+            profile.setHealthProfile(
+                    healthProfile
+            );
+        }
+        /*
+         * UPDATE
+         */
+        else {
 
-        if (workoutProfile.getId() != null) {
-            workoutProfileMapper.updateEntity(request, workoutProfile);
+            workoutProfileMapper.updateEntity(
+                    request,
+                    profile
+            );
         }
 
-        workoutProfile = workoutProfileRepository.save(workoutProfile);
+        // save profile
+        profile = workoutProfileRepository.save(profile);
 
-        return workoutProfileMapper.toResponse(workoutProfile);
+        /*
+         * Recalculate Health Profile completion.
+         */
+        profileCompletionService
+                .refreshProfileCompletion(
+                        healthProfile.getId()
+                );
+
+
+        return workoutProfileMapper.toResponse(profile);
     }
 
     @Override

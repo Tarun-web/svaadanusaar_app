@@ -7,6 +7,7 @@ import com.dietapp.diet_app.health_profile.enums.Region;
 import com.dietapp.diet_app.health_profile.enums.State;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -25,11 +26,6 @@ public class PersonalProfileResponse {
     private UUID id;
 
     /**
-     * Parent Health Profile Id.
-     */
-    private UUID healthProfileId;
-
-    /**
      * Personal Information.
      */
     private LocalDate dateOfBirth;
@@ -37,6 +33,8 @@ public class PersonalProfileResponse {
     private Gender gender;
 
     private Double heightCm;
+
+    private BigDecimal weightKg;
 
     /**
      * Lifestyle Information.

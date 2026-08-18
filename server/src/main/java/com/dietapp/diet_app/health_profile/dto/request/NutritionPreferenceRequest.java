@@ -18,11 +18,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class NutritionPreferenceRequest {
 
-    /**
-     * Parent Health Profile.
-     */
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
 
     /**
      * User's diet type.

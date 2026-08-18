@@ -10,10 +10,8 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface LifestylePreferenceMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     LifestylePreferenceProfile toEntity(LifestylePreferenceRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     LifestylePreferenceResponse toResponse(
             LifestylePreferenceProfile entity
     );

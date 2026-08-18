@@ -18,9 +18,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class FitnessGoalRequest {
 
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
-
     @NotNull(message = "Primary goal is required.")
     private Goal primaryGoal;
 

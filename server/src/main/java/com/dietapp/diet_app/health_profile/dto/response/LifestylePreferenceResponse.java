@@ -14,8 +14,6 @@ public class LifestylePreferenceResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private Boolean hosteller;
 
     private Boolean officeLunchAvailable;

@@ -18,8 +18,6 @@ public class WorkoutProfileResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private Set<ActivityResponse> activities = new HashSet<>();
 
     private LocalTime preferredWorkoutTime;

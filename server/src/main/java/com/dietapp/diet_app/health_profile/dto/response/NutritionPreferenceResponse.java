@@ -20,10 +20,6 @@ public class NutritionPreferenceResponse {
      */
     private UUID id;
 
-    /**
-     * Parent Health Profile Id.
-     */
-    private UUID healthProfileId;
 
     /**
      * User's diet preference.

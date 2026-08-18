@@ -8,10 +8,8 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring")
 public interface FitnessGoalMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     FitnessGoalProfile toEntity(FitnessGoalRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     FitnessGoalResponse toResponse(FitnessGoalProfile entity);
 
     @InheritConfiguration(name = "toEntity")

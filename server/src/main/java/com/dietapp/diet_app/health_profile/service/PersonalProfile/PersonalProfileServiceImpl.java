@@ -41,9 +41,6 @@ public class PersonalProfileServiceImpl implements PersonalProfileService {
     @Override
     public PersonalProfileResponse saveOrUpdate(PersonalProfileRequest request) {
 
-        // Extract current user from JWT token
-        UUID userId = authenticationFacade.getCurrentUserId();
-
         /*
          * Get the HealthProfile belonging to the
          * user authenticated through JWT.

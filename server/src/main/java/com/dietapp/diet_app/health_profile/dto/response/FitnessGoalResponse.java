@@ -18,8 +18,6 @@ public class FitnessGoalResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private Goal primaryGoal;
 
     private Goal secondaryGoal;

@@ -5,11 +5,10 @@ import com.dietapp.diet_app.health_profile.enums.LivingArrangement;
 import com.dietapp.diet_app.health_profile.enums.Occupation;
 import com.dietapp.diet_app.health_profile.enums.Region;
 import com.dietapp.diet_app.health_profile.enums.State;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
@@ -21,11 +20,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class PersonalProfileRequest {
 
-    /**
-     * Health Profile identifier.
-     */
-    @NotNull(message = "Health profile id is required.")
-    private UUID healthProfileId;
 
     /**
      * Date of birth.
@@ -46,6 +40,11 @@ public class PersonalProfileRequest {
     @Min(value = 80, message = "Height must be at least 80 cm.")
     @Max(value = 250, message = "Height cannot exceed 250 cm.")
     private Double heightCm;
+
+    @NotNull(message = "Weight is required.")
+    @DecimalMin(value = "20.0", message = "Weight must be at least 20 kg.")
+    @DecimalMax(value = "300.0", message = "Weight cannot exceed 300 kg.")
+    private BigDecimal weightKg;
 
     /**
      * Occupation.

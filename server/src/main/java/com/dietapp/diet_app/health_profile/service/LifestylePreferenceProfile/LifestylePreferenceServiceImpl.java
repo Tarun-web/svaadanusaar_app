@@ -11,6 +11,7 @@ import com.dietapp.diet_app.health_profile.repository.LifestylePreferenceProfile
 import com.dietapp.diet_app.health_profile.service.AbstractHealthProfileSectionService;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
 import com.dietapp.diet_app.health_profile.service.LifestylePreferenceProfile.LifestylePreferenceService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class LifestylePreferenceServiceImpl implements LifestylePreferenceServic
 
     private final LifestylePreferenceProfileRepository repository;
     private final LifestylePreferenceMapper mapper;
+    private final ProfileCompletionService  profileCompletionService;
     private final HealthProfileContextService healthProfileContextService;
 
     // Extract authenticated user from JWT token
@@ -38,18 +40,24 @@ public class LifestylePreferenceServiceImpl implements LifestylePreferenceServic
 
         // Check whether a LifestylePreferenceProfile already exists for this HealthProfile.
         LifestylePreferenceProfile lifestylePreferenceProfile =
-                repository.findByHealthProfileId(request.getHealthProfileId())
-                .orElseGet(() -> {
-                    LifestylePreferenceProfile profile = mapper.toEntity(request);
-                    profile.setHealthProfile(healthProfile);
-                    return profile;
-                });
+                repository.findByHealthProfileId(healthProfile.getId())
+                .orElse(null);
 
-        if(lifestylePreferenceProfile.getId() == null) {
+        if(lifestylePreferenceProfile == null) {
+            lifestylePreferenceProfile = mapper.toEntity(request);
+            lifestylePreferenceProfile.setHealthProfile(healthProfile);
+        }
+        else{
             mapper.updateEntity(request, lifestylePreferenceProfile);
         }
 
         lifestylePreferenceProfile = repository.save(lifestylePreferenceProfile);
+
+        // refresh profile completion
+        profileCompletionService.refreshProfileCompletion(
+                healthProfile.getId()
+        );
+
         return mapper.toResponse(lifestylePreferenceProfile);
 
     }
@@ -57,7 +65,7 @@ public class LifestylePreferenceServiceImpl implements LifestylePreferenceServic
     @Override
     public Optional<LifestylePreferenceResponse> getMyProfile() {
         HealthProfile healthProfile = healthProfileContextService.getCurrentUserHealthProfile();
-        return repository.findByHealthProfileId(healthProfile.getUser().getId())
+        return repository.findByHealthProfileId(healthProfile.getId())
                 .map(mapper::toResponse);
     }
 }

@@ -11,6 +11,7 @@ import com.dietapp.diet_app.health_profile.repository.CookingProfileRepository;
 import com.dietapp.diet_app.health_profile.repository.HealthProfileRepository;
 import com.dietapp.diet_app.health_profile.service.AbstractHealthProfileSectionService;
 import com.dietapp.diet_app.health_profile.service.HealthProfileContext.HealthProfileContextService;
+import com.dietapp.diet_app.health_profile.service.ProfileCompletion.ProfileCompletionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class CookingProfileServiceImpl implements CookingProfileService {
     private final CookingProfileRepository repository;
     private final CookingProfileMapper mapper;
     private final HealthProfileContextService healthProfileContextService;
+    private final ProfileCompletionService  profileCompletionService;
 
     // Extract authenticated user from JWT token
     private final AuthenticationFacade authenticationFacade;
@@ -38,28 +40,29 @@ public class CookingProfileServiceImpl implements CookingProfileService {
         HealthProfile healthProfile = healthProfileContextService.getCurrentUserHealthProfile();
 
         CookingProfile cookingProfile = repository
-                        .findByHealthProfileId(request.getHealthProfileId())
-                        .orElseGet(() -> {
+                        .findByHealthProfileId(healthProfile.getId())
+                        .orElse(null);
 
-                            CookingProfile profile =
-                                    mapper.toEntity(request);
-
-                            profile.setHealthProfile(healthProfile);
-
-                            return profile;
-
-                        });
-
-        if (cookingProfile.getId() != null) {
+        if (cookingProfile != null) {
 
             mapper.updateEntity(
                     request,
                     cookingProfile
             );
 
+        } else {
+
+            cookingProfile = mapper.toEntity(request);
+            cookingProfile.setHealthProfile(healthProfile);
+
         }
 
         cookingProfile = repository.save(cookingProfile);
+
+        // refresh profile completion
+        profileCompletionService.refreshProfileCompletion(
+                healthProfile.getId()
+        );
 
         return mapper.toResponse(cookingProfile);
     }
@@ -67,7 +70,7 @@ public class CookingProfileServiceImpl implements CookingProfileService {
     @Override
     public Optional<CookingProfileResponse> getMyProfile() {
         HealthProfile healthProfile = healthProfileContextService.getCurrentUserHealthProfile();
-        return repository.findByHealthProfileId(healthProfile.getUser().getId())
+        return repository.findByHealthProfileId(healthProfile.getId())
                 .map(mapper::toResponse);
     }
 }

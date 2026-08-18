@@ -17,8 +17,6 @@ public class SupplementProfileResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private Boolean openToSupplements;
 
     private Set<SupplementType> currentSupplements = new HashSet<>();

@@ -7,13 +7,12 @@ import com.dietapp.diet_app.health_profile.enums.Occupation;
 import com.dietapp.diet_app.health_profile.enums.Region;
 import com.dietapp.diet_app.health_profile.enums.State;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -54,6 +53,11 @@ public class PersonalProfile extends BaseEntity {
     @Max(250)
     @Column(nullable = false)
     private Double heightCm;
+
+    @NotNull(message = "Weight is required.")
+    @DecimalMin(value = "20.0", message = "Weight must be at least 20 kg.")
+    @DecimalMax(value = "300.0", message = "Weight cannot exceed 300 kg.")
+    private BigDecimal weightKg;
 
     @Enumerated(EnumType.STRING)
     private Occupation occupation;

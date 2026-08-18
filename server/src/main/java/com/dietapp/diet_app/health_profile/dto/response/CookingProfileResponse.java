@@ -19,8 +19,6 @@ public class CookingProfileResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private CookingSkill cookingSkill;
 
     private Integer cookingTimeMinutes;

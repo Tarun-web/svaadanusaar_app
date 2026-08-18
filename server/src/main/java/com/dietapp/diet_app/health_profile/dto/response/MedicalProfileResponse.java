@@ -19,8 +19,6 @@ public class MedicalProfileResponse {
 
     private UUID id;
 
-    private UUID healthProfileId;
-
     private Set<MedicalCondition> medicalConditions = new HashSet<>();
 
     private Set<FoodAllergy> foodAllergies = new HashSet<>();

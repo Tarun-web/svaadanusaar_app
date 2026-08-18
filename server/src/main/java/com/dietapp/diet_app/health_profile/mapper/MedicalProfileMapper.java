@@ -11,10 +11,8 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring")
 public interface MedicalProfileMapper {
 
-    @Mapping(target = "healthProfile", ignore = true)
     MedicalProfile toEntity(MedicalProfileRequest request);
 
-    @Mapping(source = "healthProfile.id", target = "healthProfileId")
     MedicalProfileResponse toResponse(MedicalProfile entity);
 
     @InheritConfiguration(name = "toEntity")

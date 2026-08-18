@@ -17,18 +17,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class WorkoutProfileRequest {
 
-    /**
-     * Parent Health Profile.
-     */
-    @NotNull(message = "Health Profile Id is required.")
-    private UUID healthProfileId;
 
-    /**
-     * User workout activities.
-     */
-    @Builder.Default
-    @Valid
-    private Set<ActivityRequest> activities = new HashSet<>();
 
     /**
      * Preferred workout time.
