@@ -1,11 +1,13 @@
-package com.dietapp.diet_app.health_profile.entity;
+package com.dietapp.diet_app.health_profile.NutritionTarget.entity;
 
 import com.dietapp.diet_app.common.entity.BaseEntity;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ActivityLevel;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalculationMethod;
+import com.dietapp.diet_app.health_profile.entity.HealthProfile;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
-
 @Entity
 @Table(
         name = "nutrition_targets",
@@ -19,9 +21,9 @@ import java.math.BigDecimal;
 )
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class NutritionTarget extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
@@ -32,30 +34,93 @@ public class NutritionTarget extends BaseEntity {
     )
     private HealthProfile healthProfile;
 
-    @Column(nullable = false)
-    private Double bmr;
+    /*
+     * Weight used for this calculation.
+     *
+     * Important:
+     * This is a snapshot of the weight at calculation time.
+     * It is NOT the user's permanent/current weight.
+     */
+    @Column(
+            name = "weight_used_kg",
+            precision = 6,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal weightUsedKg;
 
-    @Column(nullable = false)
-    private Double tdee;
+    /*
+     * Basal Metabolic Rate.
+     */
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal bmr;
 
-    @Column(nullable = false)
-    private BigDecimal calorieTarget;
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal tdee;
 
-    @Column(nullable = false)
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal targetCalories;
+
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal proteinGrams;
 
-    @Column(nullable = false)
+
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal fatGrams;
 
-    @Column(nullable = false)
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal carbohydrateGrams;
 
-    @Column(nullable = false)
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal fiberGrams;
 
-    @Column(nullable = false)
-    private BigDecimal waterLiters;
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal waterMl;
 
-    @Column(nullable = false)
-    private Integer mealsPerDay;
+    @Column(
+            precision = 8,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal calorieAdjustment;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity_level", nullable = false)
+    private ActivityLevel activityLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "calculation_method", nullable = false)
+    private CalculationMethod calculationMethod;
 }

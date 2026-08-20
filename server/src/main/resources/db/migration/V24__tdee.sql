@@ -1,0 +1,3 @@
+ALTER TABLE nutrition_targets
+ALTER COLUMN tdee TYPE NUMERIC(8,2)
+USING tdee::NUMERIC(8,2);

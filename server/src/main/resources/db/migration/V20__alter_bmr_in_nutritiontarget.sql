@@ -1,0 +1,4 @@
+
+ALTER TABLE nutrition_targets
+ALTER COLUMN bmr TYPE NUMERIC(8,2)
+USING bmr::NUMERIC(8,2);

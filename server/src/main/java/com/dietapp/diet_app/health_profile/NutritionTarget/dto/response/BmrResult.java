@@ -1,4 +1,4 @@
-package com.dietapp.diet_app.health_profile.NutritionTarget.dto.request;
+package com.dietapp.diet_app.health_profile.NutritionTarget.dto.response;
 
 import java.math.BigDecimal;
 
