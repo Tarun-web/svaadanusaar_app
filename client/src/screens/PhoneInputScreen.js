@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { COLORS, TYPOGRAPHY, SPACING } from '../styles/theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADII, SHADOWS } from '../styles/theme';
 import FloatingLabelInput from '../components/FloatingLabelInput';
 import Button from '../components/Button';
 
@@ -8,36 +8,32 @@ export default function PhoneInputScreen({ onNavigateToOtp }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [error, setError] = useState('');
 
-  // Validate 10-digit number
+  // Validate 10-digit Indian mobile number
   const cleanPhone = phoneNumber.replace(/\D/g, '');
   const isValid = cleanPhone.length === 10;
 
   const handlePhoneChange = (text) => {
-    // Only allow numbers
     const cleanText = text.replace(/\D/g, '');
-    
-    // Format as (XXX) XXX-XXXX
     let formatted = cleanText;
-    if (cleanText.length > 0) {
-      if (cleanText.length <= 3) {
-        formatted = `(${cleanText}`;
-      } else if (cleanText.length <= 6) {
-        formatted = `(${cleanText.slice(0, 3)}) ${cleanText.slice(3)}`;
-      } else {
-        formatted = `(${cleanText.slice(0, 3)}) ${cleanText.slice(3, 6)}-${cleanText.slice(6, 10)}`;
-      }
+
+    // Indian 10-digit phone format: XXXXX XXXXX
+    if (cleanText.length > 5) {
+      formatted = `${cleanText.slice(0, 5)} ${cleanText.slice(5, 10)}`;
     }
-    
+
     setPhoneNumber(formatted);
     if (error) setError('');
   };
 
   const handleContinue = () => {
     if (!isValid) {
-      setError('Please enter a valid 10-digit phone number.');
+      setError('Please enter a valid 10-digit Indian mobile number.');
       return;
     }
-    onNavigateToOtp(cleanPhone);
+    
+    // Send full Indian international number format (+91XXXXXXXXXX)
+    const fullPhoneNumber = `+91${cleanPhone}`;
+    onNavigateToOtp(fullPhoneNumber);
   };
 
   return (
@@ -49,7 +45,6 @@ export default function PhoneInputScreen({ onNavigateToOtp }) {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <Text style={styles.brandTitle}>Svaadanusaar</Text>
-            <Text style={styles.brandSub}>REWARDS</Text>
           </View>
 
           <View style={styles.formContainer}>
@@ -58,18 +53,30 @@ export default function PhoneInputScreen({ onNavigateToOtp }) {
               We will send you a text message with a verification code to check if you have an account with us.
             </Text>
 
-            <FloatingLabelInput
-              label="Mobile Number"
-              value={phoneNumber}
-              onChangeText={handlePhoneChange}
-              keyboardType="phone-pad"
-              maxLength={14} // (XXX) XXX-XXXX is 14 chars
-              error={error}
-              isValid={isValid}
-            />
+            {/* Input Row: Fixed Indian Flag + +91 Prefix Badge & Number Input */}
+            <View style={styles.inputRow}>
+              {/* Static Indian Country Code Badge */}
+              <View style={styles.countryBadge}>
+                <Text style={styles.countryFlag}>🇮🇳</Text>
+                <Text style={styles.countryCodeText}>+91</Text>
+              </View>
+
+              {/* Mobile Number Input */}
+              <View style={styles.inputFlex}>
+                <FloatingLabelInput
+                  label="Mobile Number"
+                  value={phoneNumber}
+                  onChangeText={handlePhoneChange}
+                  keyboardType="phone-pad"
+                  maxLength={11} // XXXXX XXXXX is 11 chars
+                  error={error}
+                  isValid={isValid}
+                />
+              </View>
+            </View>
 
             <Text style={styles.legalText}>
-              By continuing, you agree to receive a 6-digit verification code. Standard carrier text and data rates may apply. For demo purposes, the code is always <Text style={{ fontWeight: 'bold' }}>123456</Text>.
+              By continuing, you agree to receive a verification code. Standard carrier text and data rates may apply. For demo purposes, the code is <Text style={{ fontWeight: 'bold' }}>12345</Text>.
             </Text>
           </View>
 
@@ -111,13 +118,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     color: COLORS.starbucksGreen,
   },
-  brandSub: {
-    ...TYPOGRAPHY.micro,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    color: COLORS.textBlackSoft,
-    marginTop: -4,
-  },
   formContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -132,6 +132,35 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.textBlackSoft,
     marginBottom: SPACING.space4,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  countryBadge: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.canvasCeramic,
+    borderRadius: RADII.button,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    gap: 6,
+    ...SHADOWS.card,
+  },
+  countryFlag: {
+    fontSize: 22,
+  },
+  countryCodeText: {
+    ...TYPOGRAPHY.body,
+    fontWeight: 'bold',
+    color: COLORS.textBlack,
+  },
+  inputFlex: {
+    flex: 1,
   },
   legalText: {
     ...TYPOGRAPHY.small,

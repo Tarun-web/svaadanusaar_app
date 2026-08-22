@@ -3,20 +3,27 @@ import { StyleSheet, View, Text, SafeAreaView, KeyboardAvoidingView, Platform, S
 import { COLORS, TYPOGRAPHY, SPACING } from '../styles/theme';
 import FloatingLabelInput from '../components/FloatingLabelInput';
 import Button from '../components/Button';
-import { registerUser, setLoggedInUser } from '../services/mockDb';
+import { api } from '../services/api';
 
 export default function RegisterScreen({ phoneNumber, onBack, onRegisterSuccess }) {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
   const [generalError, setGeneralError] = useState('');
+  const [emailSentNotice, setEmailSentNotice] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Email regex validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const isEmailValid = emailRegex.test(email);
-  const isPasswordValid = password.length >= 6;
+  const isEmailValid = emailRegex.test(email.trim());
+  const isNameValid = name.trim().length >= 2;
+
+  const handleNameChange = (text) => {
+    setName(text);
+    if (nameError) setNameError('');
+    if (generalError) setGeneralError('');
+  };
 
   const handleEmailChange = (text) => {
     setEmail(text);
@@ -24,22 +31,16 @@ export default function RegisterScreen({ phoneNumber, onBack, onRegisterSuccess 
     if (generalError) setGeneralError('');
   };
 
-  const handlePasswordChange = (text) => {
-    setPassword(text);
-    if (passwordError) setPasswordError('');
-    if (generalError) setGeneralError('');
-  };
-
-  const handleCreateAccount = async () => {
+  const handleSaveProfile = async () => {
     let hasError = false;
 
-    if (!isEmailValid) {
-      setEmailError('Please enter a valid email address.');
+    if (!isNameValid) {
+      setNameError('Please enter your full name (at least 2 characters).');
       hasError = true;
     }
 
-    if (!isPasswordValid) {
-      setPasswordError('Password must be at least 6 characters long.');
+    if (!isEmailValid) {
+      setEmailError('Please enter a valid email address.');
       hasError = true;
     }
 
@@ -49,22 +50,27 @@ export default function RegisterScreen({ phoneNumber, onBack, onRegisterSuccess 
     setGeneralError('');
 
     try {
-      // Mock network delay
-      setTimeout(async () => {
-        try {
-          const user = await registerUser(phoneNumber, email, password);
-          await setLoggedInUser(user);
-          setIsLoading(false);
-          onRegisterSuccess(user);
-        } catch (err) {
-          setGeneralError(err.message || 'Registration failed.');
-          setIsLoading(false);
-        }
-      }, 1000);
+      // Call PUT /api/v1/users/me -> updates backend name/email and triggers verification email
+      const updatedUser = await api.updateUserProfile(name.trim(), email.trim());
+      setEmailSentNotice(true);
+      setIsLoading(false);
+
+      // Short pause to allow user to see notice before transitioning to subscription plans
+      setTimeout(() => {
+        onRegisterSuccess(updatedUser);
+      }, 1500);
     } catch (err) {
-      setGeneralError('Registration failed.');
+      console.error('Update Profile Error:', err);
+      setGeneralError(err.message || 'Failed to update profile.');
       setIsLoading(false);
     }
+  };
+
+  const formatDisplayPhone = (rawPhone) => {
+    if (!rawPhone) return '';
+    const digits = rawPhone.replace(/\D/g, '');
+    const ten = digits.length >= 10 ? digits.slice(-10) : digits;
+    return `+91-${ten.slice(0, 5)}-${ten.slice(5)}`;
   };
 
   return (
@@ -80,12 +86,31 @@ export default function RegisterScreen({ phoneNumber, onBack, onRegisterSuccess 
             </Pressable>
 
             <View style={styles.contentContainer}>
-              <Text style={styles.heading}>Create your profile</Text>
+              <Text style={styles.heading}>Complete Your Profile</Text>
               <Text style={styles.subHeading}>
-                We couldn't find an account for +1 ({phoneNumber.slice(0, 3)}) {phoneNumber.slice(3, 6)}-{phoneNumber.slice(6)}. Let's set up a new profile.
+                Welcome to Svaadanusaar! Please provide your name and email to set up your account for{' '}
+                <Text style={{ fontWeight: 'bold' }}>{formatDisplayPhone(phoneNumber)}</Text>.
               </Text>
 
               {generalError ? <Text style={styles.generalError}>{generalError}</Text> : null}
+              
+              {emailSentNotice ? (
+                <View style={styles.successBanner}>
+                  <Text style={styles.successBannerTitle}>✓ Profile Updated & Verification Sent</Text>
+                  <Text style={styles.successBannerText}>
+                    A verification link has been sent to {email}. Please check your inbox and click the link to verify your email.
+                  </Text>
+                </View>
+              ) : null}
+
+              <FloatingLabelInput
+                label="Full Name"
+                value={name}
+                onChangeText={handleNameChange}
+                autoCapitalize="words"
+                error={nameError}
+                isValid={isNameValid}
+              />
 
               <FloatingLabelInput
                 label="Email Address"
@@ -96,25 +121,15 @@ export default function RegisterScreen({ phoneNumber, onBack, onRegisterSuccess 
                 error={emailError}
                 isValid={isEmailValid}
               />
-
-              <FloatingLabelInput
-                label="Password (6+ characters)"
-                value={password}
-                onChangeText={handlePasswordChange}
-                secureTextEntry
-                autoCapitalize="none"
-                error={passwordError}
-                isValid={isPasswordValid}
-              />
             </View>
           </View>
 
           <View style={styles.footer}>
             <Button
-              title={isLoading ? 'Creating account...' : 'Create Account'}
+              title={isLoading ? 'Saving...' : 'Save & Continue'}
               type="primary"
-              disabled={!isEmailValid || !isPasswordValid || isLoading}
-              onPress={handleCreateAccount}
+              disabled={!isNameValid || !isEmailValid || isLoading}
+              onPress={handleSaveProfile}
               style={styles.btn}
             />
           </View>
@@ -168,6 +183,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: SPACING.space3,
     fontWeight: '600',
+  },
+  successBanner: {
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1,
+    borderColor: COLORS.accentGreen,
+    padding: SPACING.space3,
+    borderRadius: 8,
+    marginBottom: SPACING.space4,
+  },
+  successBannerTitle: {
+    ...TYPOGRAPHY.small,
+    color: COLORS.starbucksGreen,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  successBannerText: {
+    ...TYPOGRAPHY.micro,
+    color: COLORS.textBlack,
+    lineHeight: 18,
   },
   footer: {
     width: '100%',

@@ -1,113 +1,99 @@
 import React from 'react';
-import { StyleSheet, View, Text, SafeAreaView, ScrollView, Pressable } from 'react-native';
+import { StyleSheet, View, Text, SafeAreaView, ScrollView } from 'react-native';
 import { COLORS, TYPOGRAPHY, SPACING, SHADOWS, RADII } from '../styles/theme';
 import Button from '../components/Button';
-import { clearDatabase, setLoggedInUser } from '../services/mockDb';
+import { api } from '../services/api';
 
-export default function HomeScreen({ user, onSignOut }) {
+export default function HomeScreen({ user, subscription, onSignOut }) {
   const handleSignOut = async () => {
-    await setLoggedInUser(null);
+    await api.logout();
     onSignOut();
   };
 
-  const handleResetDb = async () => {
-    await clearDatabase();
-    onSignOut();
-  };
+  const initialLetter = user && user.name ? user.name[0].toUpperCase() : (user && user.email ? user.email[0].toUpperCase() : 'U');
+  const userName = user && user.name ? user.name : (user && user.email ? user.email.split('@')[0] : 'User');
+
+  const planTitle = subscription && subscription.planId ? subscription.planId.replace('PLAN_', '') : 'Active Member';
+  const endsAtFormatted = subscription && subscription.endsAt ? new Date(subscription.endsAt).toLocaleDateString() : 'N/A';
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Top Header/Brand Bar */}
+        {/* Top Navigation / Branding */}
         <View style={styles.navBar}>
           <Text style={styles.navLogo}>Svaadanusaar</Text>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{user.email[0].toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{initialLetter}</Text>
           </View>
         </View>
 
-        {/* Feature Band - Starbucks dark green House Green style */}
+        {/* Header Banner */}
         <View style={styles.featureBand}>
-          <Text style={styles.welcomeTitle}>Svaadanusaar Rewards</Text>
-          <Text style={styles.welcomeSub}>Hello, {user.email.split('@')[0]}! Enjoy your delicious journey.</Text>
-
-          {/* Star Balance Display */}
-          <View style={styles.starRow}>
-            <Text style={styles.starCount}>250</Text>
-            <Text style={styles.starSymbol}>★</Text>
-            <View style={styles.goldBadge}>
-              <Text style={styles.goldBadgeText}>GOLD LEVEL</Text>
-            </View>
-          </View>
-
-          <Text style={styles.starSub}>You are 150★ away from a free handcrafted beverage!</Text>
+          <Text style={styles.welcomeTitle}>Welcome back, {userName}!</Text>
+          <Text style={styles.welcomeSub}>Your personalized diet and health assistant is active and ready.</Text>
         </View>
 
-        {/* Rewards Tiers Section - Starbucks-inspired card system */}
-        <View style={styles.rewardsSection}>
-          <Text style={styles.sectionTitle}>Your Rewards Tiers</Text>
+        {/* Subscription Status Card */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Active Membership</Text>
 
-          <View style={styles.rewardCard}>
-            <View style={styles.rewardHeader}>
-              <Text style={styles.rewardStars}>25 ★</Text>
-              <Text style={styles.rewardBadge}>Tier 1</Text>
-            </View>
-            <Text style={styles.rewardDesc}>Customize your drink: Extra espresso shot, dairy substitute, or pump of syrup.</Text>
-          </View>
-
-          <View style={styles.rewardCard}>
-            <View style={styles.rewardHeader}>
-              <Text style={styles.rewardStars}>100 ★</Text>
-              <Text style={styles.rewardBadge}>Tier 2</Text>
-            </View>
-            <Text style={styles.rewardDesc}>Brewed hot/iced coffee, bakery items like croissants or chocolate cookies.</Text>
-          </View>
-
-          <View style={styles.rewardCard}>
-            <View style={styles.rewardHeader}>
-              <Text style={[styles.rewardStars, { color: COLORS.gold }]}>200 ★</Text>
-              <View style={[styles.goldBadge, { marginHorizontal: 0 }]}>
-                <Text style={styles.goldBadgeText}>Popular</Text>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.planName}>Subscription ({planTitle})</Text>
+              <View style={styles.activeBadge}>
+                <Text style={styles.activeBadgeText}>{subscription?.status || 'ACTIVE'}</Text>
               </View>
             </View>
-            <Text style={styles.rewardDesc}>Handcrafted hot or cold beverage (Lattes, Frappuccinos) or hot breakfast sandwich.</Text>
+
+            <Text style={styles.cardSub}>
+              Valid until: <Text style={{ fontWeight: 'bold' }}>{endsAtFormatted}</Text>
+            </Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>AI Assistant Status</Text>
+              <Text style={styles.infoValue}>Enabled</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Diet Plan Generator</Text>
+              <Text style={styles.infoValue}>Unlocked</Text>
+            </View>
           </View>
         </View>
 
-        {/* User Profile / Dev Details */}
-        <View style={styles.profileSection}>
+        {/* Account Details Section */}
+        <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Account Details</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Email</Text>
-            <Text style={styles.detailValue}>{user.email}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Phone Number</Text>
-            <Text style={styles.detailValue}>
-              +1 ({user.phone.slice(0, 3)}) {user.phone.slice(3, 6)}-{user.phone.slice(6)}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Member Since</Text>
-            <Text style={styles.detailValue}>
-              {new Date(user.createdAt).toLocaleDateString()}
-            </Text>
+          <View style={styles.card}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Full Name</Text>
+              <Text style={styles.detailValue}>{user?.name || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Email Address</Text>
+              <Text style={styles.detailValue}>{user?.email || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Phone Number</Text>
+              <Text style={styles.detailValue}>
+                {user?.phone ? (() => {
+                  const digits = user.phone.replace(/\D/g, '');
+                  const ten = digits.length >= 10 ? digits.slice(-10) : digits;
+                  return `+91-${ten.slice(0, 5)}-${ten.slice(5)}`;
+                })() : 'N/A'}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Actions / Sign Out */}
+        {/* Sign Out Action */}
         <View style={styles.actionsContainer}>
           <Button
             title="Sign Out"
             type="outlined"
             onPress={handleSignOut}
             style={styles.signOutBtn}
-          />
-          <Button
-            title="Clear Mock DB & Restart"
-            type="black"
-            onPress={handleResetDb}
-            style={styles.resetBtn}
           />
         </View>
       </ScrollView>
@@ -134,14 +120,14 @@ const styles = StyleSheet.create({
   },
   navLogo: {
     ...TYPOGRAPHY.titleSerif,
-    fontSize: 22,
+    fontSize: 24,
     color: COLORS.starbucksGreen,
   },
   avatarCircle: {
     width: 40,
     height: 40,
     borderRadius: RADII.circle,
-    backgroundColor: COLORS.accentGreen,
+    backgroundColor: COLORS.starbucksGreen,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -165,78 +151,68 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.textWhiteSoft,
     fontSize: 15,
-    marginBottom: SPACING.space4,
   },
-  starRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: SPACING.space1,
-  },
-  starCount: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  starSymbol: {
-    fontSize: 32,
-    color: COLORS.gold,
-    marginLeft: 4,
-    marginRight: SPACING.space3,
-  },
-  goldBadge: {
-    backgroundColor: COLORS.gold,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADII.button,
-    marginHorizontal: SPACING.space2,
-  },
-  goldBadgeText: {
-    ...TYPOGRAPHY.micro,
-    color: COLORS.houseGreen,
-    fontWeight: 'bold',
-  },
-  starSub: {
-    ...TYPOGRAPHY.small,
-    color: COLORS.textWhiteSoft,
-  },
-  rewardsSection: {
+  sectionContainer: {
     padding: SPACING.space4,
   },
   sectionTitle: {
     ...TYPOGRAPHY.h1,
+    fontSize: 20,
     color: COLORS.textBlack,
     marginBottom: SPACING.space3,
   },
-  rewardCard: {
+  card: {
     backgroundColor: COLORS.white,
     borderRadius: RADII.card,
-    padding: SPACING.space3,
-    marginBottom: SPACING.space3,
+    padding: SPACING.space4,
     ...SHADOWS.card,
   },
-  rewardHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.space1,
   },
-  rewardStars: {
+  planName: {
     fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.accentGreen,
+    fontWeight: 'bold',
+    color: COLORS.textBlack,
   },
-  rewardBadge: {
+  activeBadge: {
+    backgroundColor: '#e8f5e9',
+    borderColor: COLORS.starbucksGreen,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADII.button,
+  },
+  activeBadgeText: {
     ...TYPOGRAPHY.micro,
-    color: COLORS.textBlackSoft,
-    fontWeight: '500',
+    color: COLORS.starbucksGreen,
+    fontWeight: 'bold',
   },
-  rewardDesc: {
+  cardSub: {
     ...TYPOGRAPHY.small,
     color: COLORS.textBlackSoft,
   },
-  profileSection: {
-    paddingHorizontal: SPACING.space4,
-    paddingBottom: SPACING.space3,
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.canvasCeramic,
+    marginVertical: SPACING.space3,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.space1,
+  },
+  infoLabel: {
+    ...TYPOGRAPHY.small,
+    color: COLORS.textBlackSoft,
+  },
+  infoValue: {
+    ...TYPOGRAPHY.small,
+    color: COLORS.starbucksGreen,
+    fontWeight: 'bold',
   },
   detailRow: {
     flexDirection: 'row',
@@ -256,13 +232,9 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     padding: SPACING.space4,
-    gap: SPACING.space2,
     marginBottom: SPACING.space6,
   },
   signOutBtn: {
-    width: '100%',
-  },
-  resetBtn: {
     width: '100%',
   },
 });

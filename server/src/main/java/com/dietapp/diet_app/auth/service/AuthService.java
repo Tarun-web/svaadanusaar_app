@@ -34,11 +34,25 @@ public class AuthService {
         if (!"123456".equals(otp)) {
             throw new InvalidOtpException("Invalid OTP");
         }
+
+        // Normalize phone number to international +91 format
+        String normalizedPhone = phone;
+        if (normalizedPhone != null) {
+            String digits = normalizedPhone.replaceAll("\\D", "");
+            if (digits.length() == 10) {
+                normalizedPhone = "+91" + digits;
+            } else if (!normalizedPhone.startsWith("+") && !digits.isEmpty()) {
+                normalizedPhone = "+" + digits;
+            }
+        }
+
+        final String finalPhone = normalizedPhone;
+
         // Find or create user
-        User user = userRepository.findByPhone(phone)
+        User user = userRepository.findByPhone(finalPhone)
                 .orElseGet(() -> {
                     User newUser = new User();
-                    newUser.setPhone(phone);
+                    newUser.setPhone(finalPhone);
                     return userRepository.save(newUser);
                 });
 
