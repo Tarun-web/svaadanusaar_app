@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, Text, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, TextInput, Pressable } from 'react-native';
-import { COLORS, TYPOGRAPHY, SPACING, RADII } from '../styles/theme';
+import { COLORS, TYPOGRAPHY, SPACING } from '../styles/theme';
 import Button from '../components/Button';
-import { findUserByPhone, setLoggedInUser } from '../services/mockDb';
+import { api } from '../services/api';
 
-export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, onLoginSuccess }) {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+export default function OtpScreen({ phoneNumber, onBack, onVerificationSuccess }) {
+  const [otp, setOtp] = useState(['', '', '', '', '']);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const inputRefs = useRef([]);
@@ -25,7 +25,7 @@ export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, o
     setError('');
 
     // If typing a digit and not on the last input, focus next input
-    if (numericText.length === 1 && index < 5) {
+    if (numericText.length === 1 && index < 4) {
       inputRefs.current[index + 1].focus();
     }
   };
@@ -41,7 +41,7 @@ export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, o
   };
 
   const otpCode = otp.join('');
-  const isComplete = otpCode.length === 6;
+  const isComplete = otpCode.length === 5;
 
   const handleVerify = async () => {
     if (!isComplete) return;
@@ -49,37 +49,34 @@ export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, o
     setIsLoading(true);
     setError('');
 
-    // Simulate network delay
-    setTimeout(async () => {
-      if (otpCode !== '123456') {
-        setError('Incorrect verification code. Please try again.');
-        setOtp(['', '', '', '', '', '']);
-        inputRefs.current[0].focus();
-        setIsLoading(false);
-        return;
-      }
+    try {
+      // 1. Verify OTP with backend
+      await api.verifyOtp(phoneNumber, otpCode);
 
-      try {
-        const user = await findUserByPhone(phoneNumber);
-        setIsLoading(false);
-        if (user) {
-          await setLoggedInUser(user);
-          onLoginSuccess(user);
-        } else {
-          onNavigateToRegister(phoneNumber);
-        }
-      } catch (err) {
-        setError('An error occurred during verification.');
-        setIsLoading(false);
+      // 2. Fetch User Profile
+      const profile = await api.getUserProfile();
+
+      // 3. Fetch Subscription Status
+      const subStatus = await api.getSubscriptionStatus();
+
+      setIsLoading(false);
+      onVerificationSuccess({ profile, subscription: subStatus });
+    } catch (err) {
+      console.error('OTP Verification Error:', err);
+      setError(err.message || 'Incorrect verification code. Please try again.');
+      setOtp(['', '', '', '', '']);
+      if (inputRefs.current[0]) {
+        inputRefs.current[0].focus();
       }
-    }, 1000);
+      setIsLoading(false);
+    }
   };
 
   const formatDisplayPhone = (rawPhone) => {
-    if (rawPhone.length === 10) {
-      return `+1 (${rawPhone.slice(0, 3)}) ${rawPhone.slice(3, 6)}-${rawPhone.slice(6)}`;
-    }
-    return rawPhone;
+    if (!rawPhone) return '';
+    const digits = rawPhone.replace(/\D/g, '');
+    const ten = digits.length >= 10 ? digits.slice(-10) : digits;
+    return `+91-${ten.slice(0, 5)}-${ten.slice(5)}`;
   };
 
   return (
@@ -97,7 +94,7 @@ export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, o
             <View style={styles.contentContainer}>
               <Text style={styles.heading}>Verify phone number</Text>
               <Text style={styles.subHeading}>
-                Enter the 6-digit verification code sent to{' '}
+                Enter the verification code sent to{' '}
                 <Text style={{ fontWeight: 'bold' }}>{formatDisplayPhone(phoneNumber)}</Text>
               </Text>
 
@@ -124,7 +121,7 @@ export default function OtpScreen({ phoneNumber, onBack, onNavigateToRegister, o
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <Text style={styles.resendText}>
-                Didn't get code? <Text style={styles.resendLink}>Resend code (123456)</Text>
+                Didn't get code? <Text style={styles.resendLink}>Resend code (12345)</Text>
               </Text>
             </View>
           </View>

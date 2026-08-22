@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, TextInput, Animated, Text } from 'react-native';
-import { COLORS, TYPOGRAPHY } from '../styles/theme';
+import { COLORS, TYPOGRAPHY, RADII } from '../styles/theme';
 
 export default function FloatingLabelInput({
   label,
@@ -10,6 +10,7 @@ export default function FloatingLabelInput({
   isValid = false,
   keyboardType = 'default',
   secureTextEntry = false,
+  containerStyle,
   ...props
 }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -19,13 +20,13 @@ export default function FloatingLabelInput({
     Animated.timing(animatedIsFocused, {
       toValue: (isFocused || value) ? 1 : 0,
       duration: 200,
-      useNativeDriver: false, // Font size and top positioning do not support native driver
+      useNativeDriver: false,
     }).start();
   }, [isFocused, value]);
 
   const labelStyle = {
     position: 'absolute',
-    left: 16,
+    left: 20,
     top: animatedIsFocused.interpolate({
       inputRange: [0, 1],
       outputRange: [18, 6],
@@ -62,6 +63,7 @@ export default function FloatingLabelInput({
             backgroundColor: getContainerBg(),
             borderColor: getBorderColor(),
           },
+          containerStyle,
         ]}
       >
         <Animated.Text style={labelStyle}>{label}</Animated.Text>
@@ -95,14 +97,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 56,
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: RADII.button, // Full-pill rounded shape (50px)
     paddingTop: 12,
     position: 'relative',
     transition: 'background-color 0.2s ease, border-color 0.2s ease',
   },
   textInput: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     color: COLORS.textBlack,
     fontSize: 16,
     textAlignVertical: 'center',
@@ -111,7 +113,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.micro,
     color: COLORS.errorRed,
     marginTop: 4,
-    marginLeft: 4,
+    marginLeft: 12,
     fontWeight: '500',
   },
 });

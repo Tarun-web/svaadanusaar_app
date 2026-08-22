@@ -9,9 +9,9 @@
     "react-native": "0.81.0"
   },
   "scripts": {
-    "start": "expo start --port 7777",
-    "android": "expo start --android --port 7777",
-    "ios": "expo start --ios --port 7777",
+    "start": "expo start --host lan --port 7777",
+    "android": "expo start --host lan --android --port 7777",
+    "ios": "expo start --host lan --ios --port 7777",
     "web": "expo start --web --port 7777"
   },
   "private": true
