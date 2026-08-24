@@ -1,7 +1,9 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.service.calculator;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieTargetResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.TdeeResult;
+import com.dietapp.diet_app.health_profile.entity.ActivityProfile;
 import com.dietapp.diet_app.health_profile.entity.FitnessGoalProfile;
+import com.dietapp.diet_app.health_profile.entity.MedicalProfile;
 import com.dietapp.diet_app.health_profile.entity.PersonalProfile;
 import com.dietapp.diet_app.health_profile.enums.Goal;
 import lombok.RequiredArgsConstructor;
@@ -71,7 +73,8 @@ public class GoalCalorieCalculator {
     public CalorieTargetResult calculate(
             PersonalProfile personalProfile,
             FitnessGoalProfile fitnessGoalProfile,
-            Collection<com.dietapp.diet_app.health_profile.entity.ActivityProfile> activities
+            MedicalProfile medicalProfile,
+            Collection<ActivityProfile> activities
     ) {
 
         validateInput(
@@ -212,6 +215,18 @@ public class GoalCalorieCalculator {
             BigDecimal tdee
     ) {
 
+        // the provided target weight is valid value or not
+//        makes sure:
+//
+//        targetWeight < currentWeight
+//
+//        So this would be invalid:
+//
+//        Current = 78
+//        Target = 80
+//        Goal = FAT_LOSS
+//
+//        The code explicitly rejects that.
         validateFatLossTarget(
                 currentWeight,
                 targetWeight
@@ -221,7 +236,7 @@ public class GoalCalorieCalculator {
                 currentWeight.multiply(
                         MAX_WEEKLY_CHANGE_PERCENT
                 );
-
+         // range 0.5 kg to 1% of body weight allowed for safer weight loss
         BigDecimal effectiveWeeklyChange =
                 resolveWeeklyChange(
                         requestedWeeklyChange,
@@ -236,13 +251,28 @@ public class GoalCalorieCalculator {
                         effectiveWeeklyChange
                 );
 
-        /*
-         * 7700 kcal ≈ 1 kg body-weight change.
-         *
-         * Daily deficit:
-         *
-         * weekly kg × 7700 / 7
-         */
+//        The simplified model is:
+//
+//        1 kg ≈ 7,700 kcal
+//
+//        Therefore:
+//
+//        0.5 kg × 7,700
+//                = 3,850 kcal/week
+//
+//        Then:
+//
+//        3,850 / 7
+//        //        ≈ 550 kcal/day
+//
+//        So:
+//
+//        TDEE = 2,700
+//
+//        2,700 - 550
+//                = 2,150 kcal/day
+//
+//        That's what this section is doing.
         BigDecimal dailyDeficit =
                 effectiveWeeklyChange
                         .multiply(KCAL_PER_KG)
