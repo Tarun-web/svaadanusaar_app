@@ -1,4 +1,5 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.service.calculator;
+
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieTargetResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.TdeeResult;
 import com.dietapp.diet_app.health_profile.entity.ActivityProfile;
@@ -15,60 +16,56 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 
-//Its job is:
-//
-//        "Given the user's estimated TDEE and their goal, how many calories should they eat?"
-
 @Component
 @RequiredArgsConstructor
 public class GoalCalorieCalculator {
 
+    /**
+     * Approximate energy equivalent of 1 kg of body weight.
+     *
+     * This is a planning approximation, NOT a physiological constant.
+     */
     private static final BigDecimal KCAL_PER_KG =
             BigDecimal.valueOf(7700);
 
-    /*
-     * Safety boundaries.
+    /**
+     * Default weekly change when the user does not specify one.
      *
-     * These are deliberately conservative V1 boundaries.
-     * They are not medical prescriptions.
+     * This is deliberately conservative because this class only
+     * creates a calorie proposal. Final safety validation happens
+     * inside CalorieSafetyEngine.
      */
-    private static final BigDecimal MIN_CALORIE_FLOOR =
-            BigDecimal.valueOf(1200);
+    private static final BigDecimal DEFAULT_WEEKLY_CHANGE =
+            BigDecimal.valueOf(0.50);
 
-    private static final BigDecimal MAX_CALORIE_CEILING =
-            BigDecimal.valueOf(5000);
-
-    /*
-     * Maximum recommended rate as a fraction of
-     * current body weight per week.
-     *
-     * Example:
-     *
-     * 78 kg × 1% = 0.78 kg/week
-     */
-    private static final BigDecimal MAX_WEEKLY_CHANGE_PERCENT =
-            BigDecimal.valueOf(0.01);
-
-    /*
-     * Minimum practical change.
+    /**
+     * Minimum meaningful weekly change accepted by the calculator.
      */
     private static final BigDecimal MIN_WEEKLY_CHANGE =
-            BigDecimal.valueOf(0.10);
+            BigDecimal.valueOf(0.05);
 
-    /*
-     * Conservative V1 calorie adjustment limits.
+    /**
+     * Maximum surplus used specifically for muscle-gain proposals.
+     *
+     * This is a calculation-policy limit, not a medical safety limit.
      */
-    private static final BigDecimal MAX_DAILY_DEFICIT =
-            BigDecimal.valueOf(1000);
-
-    private static final BigDecimal MAX_DAILY_SURPLUS =
-            BigDecimal.valueOf(500);
+    private static final BigDecimal MAX_MUSCLE_GAIN_SURPLUS =
+            BigDecimal.valueOf(400);
 
     private final TdeeCalculator tdeeCalculator;
 
 
     /**
-     * Calculates the user's calorie target.
+     * Calculates a proposed calorie target.
+     *
+     * IMPORTANT:
+     *
+     * This class does NOT decide whether the final calorie target
+     * is medically or physiologically safe.
+     *
+     * It calculates the mathematical calorie proposal.
+     *
+     * CalorieSafetyEngine is responsible for evaluating that proposal.
      */
     public CalorieTargetResult calculate(
             PersonalProfile personalProfile,
@@ -82,29 +79,18 @@ public class GoalCalorieCalculator {
                 fitnessGoalProfile
         );
 
-        /*
-         * ---------------------------------------------------------
-         * 1. CURRENT WEIGHT
-         * ---------------------------------------------------------
-         */
         BigDecimal currentWeight =
                 personalProfile.getWeightKg();
 
-
-        /*
-         * ---------------------------------------------------------
-         * 2. GOAL
-         * ---------------------------------------------------------
-         */
         Goal goal =
                 fitnessGoalProfile.getPrimaryGoal();
 
-
         /*
          * ---------------------------------------------------------
-         * 3. TDEE
+         * TDEE
          * ---------------------------------------------------------
          */
+
         TdeeResult tdeeResult =
                 tdeeCalculator.calculate(
                         personalProfile,
@@ -114,38 +100,40 @@ public class GoalCalorieCalculator {
         BigDecimal tdee =
                 tdeeResult.tdee();
 
-
         /*
          * ---------------------------------------------------------
-         * 4. TARGET WEIGHT
+         * Optional target values
          * ---------------------------------------------------------
+         *
+         * Do not blindly convert null to BigDecimal.
          */
+
         BigDecimal targetWeight =
-                BigDecimal.valueOf(fitnessGoalProfile.getTargetWeightKg());
+                toBigDecimal(
+                        fitnessGoalProfile.getTargetWeightKg()
+                );
 
-
-        /*
-         * ---------------------------------------------------------
-         * 5. REQUESTED WEEKLY CHANGE
-         * ---------------------------------------------------------
-         */
         BigDecimal requestedWeeklyChange =
-                BigDecimal.valueOf(fitnessGoalProfile
-                        .getWeeklyWeightChangeKg());
+                toBigDecimal(
+                        fitnessGoalProfile.getWeeklyWeightChangeKg()
+                );
 
+        LocalDate targetDate =
+                fitnessGoalProfile.getTargetDate();
 
         /*
          * ---------------------------------------------------------
-         * 6. GOAL-SPECIFIC CALCULATION
+         * GOAL-SPECIFIC CALCULATION
          * ---------------------------------------------------------
          */
+
         return switch (goal) {
 
             case FAT_LOSS ->
                     calculateFatLoss(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             requestedWeeklyChange,
                             tdee
                     );
@@ -154,7 +142,7 @@ public class GoalCalorieCalculator {
                     calculateWeightGain(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             requestedWeeklyChange,
                             tdee
                     );
@@ -163,7 +151,7 @@ public class GoalCalorieCalculator {
                     calculateMuscleGain(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             requestedWeeklyChange,
                             tdee
                     );
@@ -172,7 +160,7 @@ public class GoalCalorieCalculator {
                     calculateBodyRecomposition(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             tdee
                     );
 
@@ -180,7 +168,7 @@ public class GoalCalorieCalculator {
                     calculateMaintenance(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             tdee
                     );
 
@@ -188,7 +176,7 @@ public class GoalCalorieCalculator {
                     calculateGeneralHealth(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             tdee
                     );
 
@@ -196,7 +184,7 @@ public class GoalCalorieCalculator {
                     calculateSportsPerformance(
                             currentWeight,
                             targetWeight,
-                            fitnessGoalProfile.getTargetDate(),
+                            targetDate,
                             tdee
                     );
         };
@@ -215,32 +203,15 @@ public class GoalCalorieCalculator {
             BigDecimal tdee
     ) {
 
-        // the provided target weight is valid value or not
-//        makes sure:
-//
-//        targetWeight < currentWeight
-//
-//        So this would be invalid:
-//
-//        Current = 78
-//        Target = 80
-//        Goal = FAT_LOSS
-//
-//        The code explicitly rejects that.
         validateFatLossTarget(
                 currentWeight,
-                targetWeight
+                targetWeight,
+                targetDate
         );
 
-        BigDecimal maximumSafeWeeklyChange =
-                currentWeight.multiply(
-                        MAX_WEEKLY_CHANGE_PERCENT
-                );
-         // range 0.5 kg to 1% of body weight allowed for safer weight loss
         BigDecimal effectiveWeeklyChange =
                 resolveWeeklyChange(
-                        requestedWeeklyChange,
-                        maximumSafeWeeklyChange
+                        requestedWeeklyChange
                 );
 
         boolean timelineAchievable =
@@ -251,51 +222,13 @@ public class GoalCalorieCalculator {
                         effectiveWeeklyChange
                 );
 
-//        The simplified model is:
-//
-//        1 kg ≈ 7,700 kcal
-//
-//        Therefore:
-//
-//        0.5 kg × 7,700
-//                = 3,850 kcal/week
-//
-//        Then:
-//
-//        3,850 / 7
-//        //        ≈ 550 kcal/day
-//
-//        So:
-//
-//        TDEE = 2,700
-//
-//        2,700 - 550
-//                = 2,150 kcal/day
-//
-//        That's what this section is doing.
         BigDecimal dailyDeficit =
-                effectiveWeeklyChange
-                        .multiply(KCAL_PER_KG)
-                        .divide(
-                                BigDecimal.valueOf(7),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        dailyDeficit =
-                dailyDeficit.min(
-                        MAX_DAILY_DEFICIT
+                weeklyChangeToDailyCalories(
+                        effectiveWeeklyChange
                 );
 
-        BigDecimal targetCalories =
-                tdee.subtract(
-                        dailyDeficit
-                );
-
-        targetCalories =
-                clampCalories(
-                        targetCalories
-                );
+        BigDecimal proposedCalories =
+                tdee.subtract(dailyDeficit);
 
         return buildResult(
                 Goal.FAT_LOSS,
@@ -306,7 +239,7 @@ public class GoalCalorieCalculator {
                 requestedWeeklyChange,
                 effectiveWeeklyChange,
                 dailyDeficit.negate(),
-                targetCalories,
+                proposedCalories,
                 timelineAchievable
         );
     }
@@ -326,16 +259,13 @@ public class GoalCalorieCalculator {
 
         validateWeightGainTarget(
                 currentWeight,
-                targetWeight
+                targetWeight,
+                targetDate
         );
-
-        BigDecimal maximumWeeklyGain =
-                BigDecimal.valueOf(0.50);
 
         BigDecimal effectiveWeeklyChange =
                 resolveWeeklyChange(
-                        requestedWeeklyChange,
-                        maximumWeeklyGain
+                        requestedWeeklyChange
                 );
 
         boolean timelineAchievable =
@@ -347,28 +277,12 @@ public class GoalCalorieCalculator {
                 );
 
         BigDecimal dailySurplus =
-                effectiveWeeklyChange
-                        .multiply(KCAL_PER_KG)
-                        .divide(
-                                BigDecimal.valueOf(7),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        dailySurplus =
-                dailySurplus.min(
-                        MAX_DAILY_SURPLUS
+                weeklyChangeToDailyCalories(
+                        effectiveWeeklyChange
                 );
 
-        BigDecimal targetCalories =
-                tdee.add(
-                        dailySurplus
-                );
-
-        targetCalories =
-                clampCalories(
-                        targetCalories
-                );
+        BigDecimal proposedCalories =
+                tdee.add(dailySurplus);
 
         return buildResult(
                 Goal.WEIGHT_GAIN,
@@ -379,7 +293,7 @@ public class GoalCalorieCalculator {
                 requestedWeeklyChange,
                 effectiveWeeklyChange,
                 dailySurplus,
-                targetCalories,
+                proposedCalories,
                 timelineAchievable
         );
     }
@@ -397,18 +311,14 @@ public class GoalCalorieCalculator {
             BigDecimal tdee
     ) {
 
-        /*
-         * Muscle gain should use a smaller surplus than
-         * unrestricted weight gain.
-         */
         BigDecimal effectiveWeeklyChange =
                 resolveWeeklyChange(
-                        requestedWeeklyChange,
-                        BigDecimal.valueOf(0.25)
+                        requestedWeeklyChange
                 );
 
         boolean timelineAchievable =
                 targetWeight == null
+                        || targetDate == null
                         || isTimelineAchievable(
                         currentWeight,
                         targetWeight,
@@ -417,25 +327,25 @@ public class GoalCalorieCalculator {
                 );
 
         BigDecimal dailySurplus =
-                effectiveWeeklyChange
-                        .multiply(KCAL_PER_KG)
-                        .divide(
-                                BigDecimal.valueOf(7),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                weeklyChangeToDailyCalories(
+                        effectiveWeeklyChange
+                );
+
+        /*
+         * Muscle gain should normally use a modest surplus.
+         *
+         * This is not the safety engine. It simply prevents
+         * the muscle-gain proposal from becoming excessively
+         * large due to a user-entered weekly rate.
+         */
 
         dailySurplus =
                 dailySurplus.min(
-                        BigDecimal.valueOf(400)
+                        MAX_MUSCLE_GAIN_SURPLUS
                 );
 
-        BigDecimal targetCalories =
-                clampCalories(
-                        tdee.add(
-                                dailySurplus
-                        )
-                );
+        BigDecimal proposedCalories =
+                tdee.add(dailySurplus);
 
         return buildResult(
                 Goal.MUSCLE_GAIN,
@@ -446,7 +356,7 @@ public class GoalCalorieCalculator {
                 requestedWeeklyChange,
                 effectiveWeeklyChange,
                 dailySurplus,
-                targetCalories,
+                proposedCalories,
                 timelineAchievable
         );
     }
@@ -464,15 +374,11 @@ public class GoalCalorieCalculator {
     ) {
 
         /*
-         * Start close to maintenance.
+         * Start at maintenance.
          *
-         * Macro distribution and protein become particularly
-         * important for recomposition.
+         * Macro distribution, especially protein,
+         * will become important in the macro engine.
          */
-        BigDecimal targetCalories =
-                clampCalories(
-                        tdee
-                );
 
         return buildResult(
                 Goal.BODY_RECOMPOSITION,
@@ -483,7 +389,7 @@ public class GoalCalorieCalculator {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                targetCalories,
+                tdee,
                 true
         );
     }
@@ -509,7 +415,7 @@ public class GoalCalorieCalculator {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                clampCalories(tdee),
+                tdee,
                 true
         );
     }
@@ -529,11 +435,9 @@ public class GoalCalorieCalculator {
         /*
          * General health starts around maintenance.
          *
-         * Future versions can adjust this based on:
-         * medical profile, body composition, etc.
+         * Medical considerations are handled by the
+         * CalorieSafetyEngine.
          */
-        BigDecimal targetCalories =
-                clampCalories(tdee);
 
         return buildResult(
                 Goal.GENERAL_HEALTH,
@@ -544,7 +448,7 @@ public class GoalCalorieCalculator {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                targetCalories,
+                tdee,
                 true
         );
     }
@@ -564,18 +468,15 @@ public class GoalCalorieCalculator {
         /*
          * Start with a modest performance surplus.
          *
-         * Later this should become training-day /
-         * rest-day periodized nutrition.
+         * Later this should become training-day/rest-day
+         * periodization.
          */
+
         BigDecimal dailySurplus =
                 BigDecimal.valueOf(200);
 
-        BigDecimal targetCalories =
-                clampCalories(
-                        tdee.add(
-                                dailySurplus
-                        )
-                );
+        BigDecimal proposedCalories =
+                tdee.add(dailySurplus);
 
         return buildResult(
                 Goal.SPORTS_PERFORMANCE,
@@ -586,7 +487,7 @@ public class GoalCalorieCalculator {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 dailySurplus,
-                targetCalories,
+                proposedCalories,
                 true
         );
     }
@@ -607,12 +508,6 @@ public class GoalCalorieCalculator {
             );
         }
 
-        if (personalProfile.getWeightKg() == null) {
-            throw new IllegalArgumentException(
-                    "Current weight is required."
-            );
-        }
-
         if (fitnessGoalProfile == null) {
             throw new IllegalArgumentException(
                     "Fitness goal profile is required."
@@ -625,26 +520,46 @@ public class GoalCalorieCalculator {
             );
         }
 
+        if (personalProfile.getWeightKg() == null) {
+            throw new IllegalArgumentException(
+                    "Current weight is required."
+            );
+        }
+
         validatePositive(
                 personalProfile.getWeightKg(),
                 "Current weight"
         );
 
-        if (fitnessGoalProfile.getTargetDate() != null
-                && fitnessGoalProfile.getTargetDate()
-                .isBefore(LocalDate.now())) {
+        /*
+         * Validate target date globally if supplied.
+         */
+
+        LocalDate targetDate =
+                fitnessGoalProfile.getTargetDate();
+
+        if (targetDate != null
+                && targetDate.isBefore(LocalDate.now())) {
 
             throw new IllegalArgumentException(
                     "Target date cannot be in the past."
             );
         }
 
-        if (fitnessGoalProfile
-                .getWeeklyWeightChangeKg() != null) {
+        /*
+         * Weekly change, when supplied, must be positive.
+         */
+
+        BigDecimal weeklyChange =
+                toBigDecimal(
+                        fitnessGoalProfile
+                                .getWeeklyWeightChangeKg()
+                );
+
+        if (weeklyChange != null) {
 
             validatePositive(
-                    BigDecimal.valueOf(fitnessGoalProfile
-                            .getWeeklyWeightChangeKg()),
+                    weeklyChange,
                     "Weekly weight change"
             );
         }
@@ -653,7 +568,8 @@ public class GoalCalorieCalculator {
 
     private void validateFatLossTarget(
             BigDecimal currentWeight,
-            BigDecimal targetWeight
+            BigDecimal targetWeight,
+            LocalDate targetDate
     ) {
 
         if (targetWeight == null) {
@@ -667,12 +583,18 @@ public class GoalCalorieCalculator {
                     "Fat-loss target weight must be below current weight."
             );
         }
+
+        validateTargetDateForWeightGoal(
+                targetDate,
+                "Fat-loss"
+        );
     }
 
 
     private void validateWeightGainTarget(
             BigDecimal currentWeight,
-            BigDecimal targetWeight
+            BigDecimal targetWeight,
+            LocalDate targetDate
     ) {
 
         if (targetWeight == null) {
@@ -686,6 +608,33 @@ public class GoalCalorieCalculator {
                     "Weight-gain target weight must be above current weight."
             );
         }
+
+        validateTargetDateForWeightGoal(
+                targetDate,
+                "Weight-gain"
+        );
+    }
+
+
+    private void validateTargetDateForWeightGoal(
+            LocalDate targetDate,
+            String goalName
+    ) {
+
+        if (targetDate == null) {
+            throw new IllegalArgumentException(
+                    "Target date is required for "
+                            + goalName.toLowerCase()
+                            + "."
+            );
+        }
+
+        if (!targetDate.isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException(
+                    goalName
+                            + " target date must be in the future."
+            );
+        }
     }
 
 
@@ -694,14 +643,16 @@ public class GoalCalorieCalculator {
     // ============================================================
 
     private BigDecimal resolveWeeklyChange(
-            BigDecimal requested,
-            BigDecimal maximumAllowed
+            BigDecimal requested
     ) {
 
+        /*
+         * If the user didn't provide a rate,
+         * use a conservative default.
+         */
+
         if (requested == null) {
-            return maximumAllowed.min(
-                    BigDecimal.valueOf(0.50)
-            );
+            return DEFAULT_WEEKLY_CHANGE;
         }
 
         if (requested.compareTo(BigDecimal.ZERO) <= 0) {
@@ -710,13 +661,19 @@ public class GoalCalorieCalculator {
             );
         }
 
+        /*
+         * Do not silently turn a tiny user-entered value
+         * into a different target.
+         *
+         * The only reason for a minimum here is to prevent
+         * numerical noise.
+         */
+
         if (requested.compareTo(MIN_WEEKLY_CHANGE) < 0) {
             return MIN_WEEKLY_CHANGE;
         }
 
-        return requested.min(
-                maximumAllowed
-        );
+        return requested;
     }
 
 
@@ -731,11 +688,7 @@ public class GoalCalorieCalculator {
             BigDecimal weeklyChange
     ) {
 
-        if (targetDate == null) {
-            return true;
-        }
-
-        if (targetWeight == null) {
+        if (targetDate == null || targetWeight == null) {
             return true;
         }
 
@@ -758,9 +711,7 @@ public class GoalCalorieCalculator {
                         );
 
         BigDecimal achievableChange =
-                weeklyChange.multiply(
-                        weeks
-                );
+                weeklyChange.multiply(weeks);
 
         BigDecimal requiredChange =
                 currentWeight
@@ -774,31 +725,20 @@ public class GoalCalorieCalculator {
 
 
     // ============================================================
-    // CALORIE SAFETY
+    // CALORIE CONVERSION
     // ============================================================
 
-    private BigDecimal clampCalories(
-            BigDecimal calories
+    private BigDecimal weeklyChangeToDailyCalories(
+            BigDecimal weeklyChange
     ) {
 
-        if (calories.compareTo(
-                MIN_CALORIE_FLOOR
-        ) < 0) {
-
-            return MIN_CALORIE_FLOOR;
-        }
-
-        if (calories.compareTo(
-                MAX_CALORIE_CEILING
-        ) > 0) {
-
-            return MAX_CALORIE_CEILING;
-        }
-
-        return calories.setScale(
-                0,
-                RoundingMode.HALF_UP
-        );
+        return weeklyChange
+                .multiply(KCAL_PER_KG)
+                .divide(
+                        BigDecimal.valueOf(7),
+                        2,
+                        RoundingMode.HALF_UP
+                );
     }
 
 
@@ -815,24 +755,50 @@ public class GoalCalorieCalculator {
             BigDecimal requestedWeeklyChange,
             BigDecimal effectiveWeeklyChange,
             BigDecimal dailyAdjustment,
-            BigDecimal targetCalories,
+            BigDecimal proposedCalories,
             boolean timelineAchievable
     ) {
 
-        return new CalorieTargetResult(
-                goal,
-                currentWeight,
-                targetWeight,
-                targetDate,
-                tdee,
-                requestedWeeklyChange,
-                effectiveWeeklyChange,
-                dailyAdjustment,
-                targetCalories,
-                MIN_CALORIE_FLOOR,
-                MAX_CALORIE_CEILING,
-                timelineAchievable
-        );
+        return CalorieTargetResult.builder()
+                .goal(goal)
+                .currentWeightKg(currentWeight)
+                .targetWeightKg(targetWeight)
+                .targetDate(targetDate)
+                .tdee(tdee)
+                .requestedWeeklyWeightChangeKg(
+                        requestedWeeklyChange
+                )
+                .effectiveWeeklyWeightChangeKg(
+                        effectiveWeeklyChange
+                )
+                .dailyCalorieAdjustment(
+                        dailyAdjustment
+                )
+                .proposedCalories(
+                        proposedCalories
+                                .setScale(
+                                        0,
+                                        RoundingMode.HALF_UP
+                                )
+                )
+                .timelineAchievable(
+                        timelineAchievable
+                )
+                .build();
+    }
+
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
+    private BigDecimal toBigDecimal(
+            Double value
+    ) {
+
+        return value == null
+                ? null
+                : BigDecimal.valueOf(value);
     }
 
 
@@ -847,7 +813,8 @@ public class GoalCalorieCalculator {
         ) <= 0) {
 
             throw new IllegalArgumentException(
-                    field + " must be greater than zero."
+                    field
+                            + " must be greater than zero."
             );
         }
     }

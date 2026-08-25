@@ -1,35 +1,41 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.dto.response;
-
 import com.dietapp.diet_app.health_profile.enums.Goal;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
-public record CalorieTargetResult(
+@Getter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CalorieTargetResult {
 
-        Goal goal,
+    private Goal goal;
 
-        BigDecimal currentWeightKg,
+    private BigDecimal currentWeightKg;
 
-        BigDecimal targetWeightKg,
+    private BigDecimal targetWeightKg;
 
-        LocalDate targetDate,
+    private LocalDate targetDate;
 
-        BigDecimal tdeeCalories,
+    private BigDecimal tdee;
 
-        BigDecimal requestedWeeklyWeightChangeKg,
+    private BigDecimal requestedWeeklyWeightChangeKg;
 
-        BigDecimal effectiveWeeklyWeightChangeKg,
+    private BigDecimal effectiveWeeklyWeightChangeKg;
 
-        BigDecimal dailyCalorieAdjustment,
+    private BigDecimal dailyCalorieAdjustment;
 
-        BigDecimal targetCalories,
+    /**
+     * Calories proposed by GoalCalorieCalculator
+     * BEFORE medical/body-size safety evaluation.
+     */
+    private BigDecimal proposedCalories;
 
-        BigDecimal minimumAllowedCalories,
-
-        BigDecimal maximumAllowedCalories,
-
-        boolean targetTimelineAchievable
-
-) {
+    private boolean timelineAchievable;
 }

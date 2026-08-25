@@ -7,6 +7,9 @@ import com.dietapp.diet_app.health_profile.entity.MedicalProfile;
 import com.dietapp.diet_app.health_profile.entity.PersonalProfile;
 import com.dietapp.diet_app.health_profile.enums.Gender;
 import com.dietapp.diet_app.health_profile.enums.MedicalCondition;
+import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieSafetyConstraints;
+import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieWarning;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalorieWarningCode;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -46,7 +49,7 @@ public class CalorieSafetyEngine {
                 fitnessGoalProfile
         );
 
-        List<String> warnings =
+        List<CalorieWarning> warnings =
                 new ArrayList<>();
 
         BigDecimal minimumCalories =
@@ -58,18 +61,12 @@ public class CalorieSafetyEngine {
         BigDecimal maximumDailyDeficit =
                 DEFAULT_MAX_DEFICIT;
 
-        BigDecimal maximumDailySurplus =
-                DEFAULT_MAX_SURPLUS;
-
         BigDecimal maximumWeeklyWeightLoss =
                 personalProfile
                         .getWeightKg()
                         .multiply(
                                 DEFAULT_MAX_WEIGHT_LOSS
                         );
-
-        BigDecimal maximumWeeklyWeightGain =
-                DEFAULT_MAX_WEIGHT_GAIN;
 
         boolean requiresClinicalReview = false;
 
@@ -109,8 +106,11 @@ public class CalorieSafetyEngine {
                         BigDecimal.valueOf(0.25);
 
                 warnings.add(
-                        "Current BMI is below the standard adult healthy-weight range. " +
-                                "Aggressive weight loss is not recommended."
+                        new CalorieWarning(
+                                CalorieWarningCode.LOW_BODY_WEIGHT,
+                                "Current BMI is below the standard adult healthy-weight range. " +
+                                        "Aggressive weight loss is not recommended."
+                        )
                 );
             }
 
@@ -125,7 +125,10 @@ public class CalorieSafetyEngine {
             ) >= 0) {
 
                 warnings.add(
-                        "Higher BMI detected. Weight-loss targets should be individualized."
+                        new CalorieWarning(
+                                CalorieWarningCode.HIGH_BODY_WEIGHT,
+                                "Higher BMI detected. Weight-loss targets should be individualized."
+                        )
                 );
             }
         }
@@ -151,7 +154,10 @@ public class CalorieSafetyEngine {
         if (gender == null) {
 
             warnings.add(
-                    "Gender is missing. Energy estimation may be less precise."
+                    new CalorieWarning(
+                            CalorieWarningCode.MISSING_GENDER,
+                            "Gender is missing. Energy estimation may be less precise."
+                    )
             );
         }
 
@@ -179,6 +185,14 @@ public class CalorieSafetyEngine {
                 if (requiresClinicalReview(condition)) {
 
                     requiresClinicalReview = true;
+
+                    warnings.add(
+                            new CalorieWarning(
+                                    CalorieWarningCode.CLINICAL_REVIEW_REQUIRED,
+                                    "This medical condition requires individualized clinical " +
+                                            "assessment before relying on an automated nutrition target."
+                            )
+                    );
                 }
             }
         }
@@ -204,9 +218,9 @@ public class CalorieSafetyEngine {
                 minimumCalories,
                 maximumCalories,
                 maximumDailyDeficit,
-                maximumDailySurplus,
+                DEFAULT_MAX_SURPLUS,
                 maximumWeeklyWeightLoss,
-                maximumWeeklyWeightGain,
+                DEFAULT_MAX_WEIGHT_GAIN,
                 requiresClinicalReview,
                 warnings
         );
@@ -215,78 +229,119 @@ public class CalorieSafetyEngine {
 
     private void applyMedicalConstraint(
             MedicalCondition condition,
-            List<String> warnings
+            List<CalorieWarning> warnings
     ) {
 
         switch (condition) {
 
             case DIABETES -> warnings.add(
-                    "Diabetes detected. Calorie targets and carbohydrate distribution " +
-                            "should be individualized."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Diabetes detected. Calorie targets and carbohydrate distribution " +
+                                    "should be individualized."
+                    )
             );
 
             case PREDIABETES -> warnings.add(
-                    "Prediabetes detected. Weight-loss nutrition should emphasize " +
-                            "overall diet quality and individualized carbohydrate management."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Prediabetes detected. Weight-loss nutrition should emphasize " +
+                                    "overall diet quality and individualized carbohydrate management."
+                    )
             );
 
             case HYPERTENSION -> warnings.add(
-                    "Hypertension detected. Sodium and overall dietary pattern " +
-                            "should be considered in meal planning."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Hypertension detected. Sodium and overall dietary pattern " +
+                                    "should be considered in meal planning."
+                    )
             );
 
             case HIGH_CHOLESTEROL -> warnings.add(
-                    "High cholesterol detected. Fat quality and dietary pattern " +
-                            "should be considered."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "High cholesterol detected. Fat quality and dietary pattern " +
+                                    "should be considered."
+                    )
             );
 
             case FATTY_LIVER -> warnings.add(
-                    "Fatty liver detected. Weight-management and dietary quality " +
-                            "should be handled carefully."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Fatty liver detected. Weight-management and dietary quality " +
+                                    "should be handled carefully."
+                    )
             );
 
             case HYPOTHYROID -> warnings.add(
-                    "Hypothyroidism detected. Calorie targets should consider " +
-                            "the individual's clinical context and treatment."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Hypothyroidism detected. Calorie targets should consider " +
+                                    "the individual's clinical context and treatment."
+                    )
             );
 
             case HYPERTHYROID -> warnings.add(
-                    "Hyperthyroidism detected. Energy requirements may require " +
-                            "individualized clinical assessment."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Hyperthyroidism detected. Energy requirements may require " +
+                                    "individualized clinical assessment."
+                    )
             );
 
             case PCOS -> warnings.add(
-                    "PCOS detected. Weight-management and dietary strategy " +
-                            "should be individualized."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "PCOS detected. Weight-management and dietary strategy " +
+                                    "should be individualized."
+                    )
             );
 
             case IBS -> warnings.add(
-                    "IBS detected. Calorie target alone is insufficient; " +
-                            "food tolerance and symptom triggers should also be considered."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "IBS detected. Calorie target alone is insufficient; " +
+                                    "food tolerance and symptom triggers should also be considered."
+                    )
             );
 
             case GERD -> warnings.add(
-                    "GERD detected. Meal composition and timing should be considered."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "GERD detected. Meal composition and timing should be considered."
+                    )
             );
 
             case CELIAC -> warnings.add(
-                    "Celiac disease detected. Gluten exclusion must be enforced."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Celiac disease detected. Gluten exclusion must be enforced."
+                    )
             );
 
             case GOUT -> warnings.add(
-                    "Gout detected. Food selection and hydration considerations " +
-                            "are important."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Gout detected. Food selection and hydration considerations " +
+                                    "are important."
+                    )
             );
 
             case KIDNEY_DISEASE -> warnings.add(
-                    "Kidney disease detected. Automated nutrition targets " +
-                            "should not be treated as a clinical prescription."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Kidney disease detected. Automated nutrition targets " +
+                                    "should not be treated as a clinical prescription."
+                    )
             );
 
             case LIVER_DISEASE -> warnings.add(
-                    "Liver disease detected. Nutrition targets require individualized "
-                            +
-                            "clinical consideration."
+                    new CalorieWarning(
+                            CalorieWarningCode.MEDICAL_CONDITION_PRESENT,
+                            "Liver disease detected. Nutrition targets require individualized " +
+                                    "clinical consideration."
+                    )
             );
         }
     }
