@@ -1,20 +1,21 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.service.calculator;
 
 
-import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieSafetyConstraints;
+import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.*;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalorieSafetyStatus;
 import com.dietapp.diet_app.health_profile.entity.FitnessGoalProfile;
 import com.dietapp.diet_app.health_profile.entity.MedicalProfile;
 import com.dietapp.diet_app.health_profile.entity.PersonalProfile;
 import com.dietapp.diet_app.health_profile.enums.Gender;
+import com.dietapp.diet_app.health_profile.enums.Goal;
 import com.dietapp.diet_app.health_profile.enums.MedicalCondition;
-import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieSafetyConstraints;
-import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.CalorieWarning;
 import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalorieWarningCode;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+
 
 @Component
 public class CalorieSafetyEngine {
@@ -226,6 +227,317 @@ public class CalorieSafetyEngine {
         );
     }
 
+    public CalorieSafetyResult evaluate(
+            PersonalProfile personalProfile,
+            FitnessGoalProfile fitnessGoalProfile,
+            MedicalProfile medicalProfile,
+            CalorieTargetResult calorieTarget
+    ) {
+
+        if (calorieTarget == null) {
+            throw new IllegalArgumentException(
+                    "Calorie target result is required."
+            );
+        }
+
+        if (calorieTarget.getProposedCalories() == null) {
+            throw new IllegalArgumentException(
+                    "Proposed calories are required."
+            );
+        }
+
+        CalorieSafetyConstraints constraints =
+                resolve(
+                        personalProfile,
+                        fitnessGoalProfile,
+                        medicalProfile
+                );
+
+        BigDecimal originalCalories =
+                calorieTarget.getProposedCalories();
+
+        BigDecimal finalCalories =
+                originalCalories;
+
+        boolean adjusted = false;
+
+        List<CalorieWarning> warnings =
+                new ArrayList<>(constraints.warnings());
+
+        BigDecimal tdee =
+                calorieTarget.getTdee();
+
+        /*
+         * ---------------------------------------------------------
+         * 1. DETERMINE CALORIE BOUNDARIES
+         * ---------------------------------------------------------
+         */
+
+        BigDecimal minimumCalories =
+                constraints.minimumCalories();
+
+        BigDecimal maximumCalories =
+                constraints.maximumCalories();
+
+        /*
+         * Maximum allowable deficit based on TDEE.
+         *
+         * Example:
+         *
+         * TDEE = 2500
+         * Maximum deficit = 750
+         *
+         * Minimum calories from deficit rule = 1750
+         */
+        if (tdee != null
+                && constraints.maximumDailyDeficit() != null) {
+
+            BigDecimal minimumFromDeficit =
+                    tdee.subtract(
+                            constraints.maximumDailyDeficit()
+                    );
+
+            /*
+             * Never allow the deficit-derived minimum
+             * to fall below the absolute calorie floor.
+             */
+            minimumCalories =
+                    minimumCalories.max(
+                            minimumFromDeficit
+                    );
+        }
+
+        /*
+         * Maximum allowable surplus.
+         *
+         * Example:
+         *
+         * TDEE = 2500
+         * Maximum surplus = 500
+         *
+         * Maximum calories = 3000
+         */
+        if (tdee != null
+                && constraints.maximumDailySurplus() != null) {
+
+            BigDecimal maximumFromSurplus =
+                    tdee.add(
+                            constraints.maximumDailySurplus()
+                    );
+
+            /*
+             * Never allow the surplus-derived maximum
+             * to exceed the absolute calorie ceiling.
+             */
+            maximumCalories =
+                    maximumCalories.min(
+                            maximumFromSurplus
+                    );
+        }
+
+        /*
+         * Safety check.
+         */
+        if (minimumCalories.compareTo(
+                maximumCalories
+        ) > 0) {
+
+            maximumCalories =
+                    minimumCalories;
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 2. MINIMUM CALORIE CHECK
+         * ---------------------------------------------------------
+         */
+
+        if (finalCalories.compareTo(
+                minimumCalories
+        ) < 0) {
+
+            finalCalories =
+                    minimumCalories;
+
+            adjusted = true;
+
+            warnings.add(
+                    new CalorieWarning(
+                            CalorieWarningCode.CALORIE_TARGET_ADJUSTED,
+                            "The proposed calorie target was below "
+                                    + "the applicable minimum safety "
+                                    + "boundary and has been adjusted."
+                    )
+            );
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 3. MAXIMUM CALORIE CHECK
+         * ---------------------------------------------------------
+         */
+
+        if (finalCalories.compareTo(
+                maximumCalories
+        ) > 0) {
+
+            finalCalories =
+                    maximumCalories;
+
+            adjusted = true;
+
+            warnings.add(
+                    new CalorieWarning(
+                            CalorieWarningCode.CALORIE_TARGET_ADJUSTED,
+                            "The proposed calorie target exceeded "
+                                    + "the applicable maximum safety "
+                                    + "boundary and has been adjusted."
+                    )
+            );
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 4. WEEKLY WEIGHT-CHANGE VALIDATION
+         * ---------------------------------------------------------
+         */
+
+        BigDecimal requestedWeeklyChange =
+                toBigDecimal(
+                        fitnessGoalProfile
+                                .getWeeklyWeightChangeKg()
+                );
+
+        Goal goal =
+                fitnessGoalProfile.getPrimaryGoal();
+
+        if (requestedWeeklyChange != null) {
+
+            switch (goal) {
+
+                case FAT_LOSS -> {
+
+                    BigDecimal maximumAllowedLoss =
+                            constraints.maximumWeeklyWeightLoss();
+
+                    if (maximumAllowedLoss != null
+                            && requestedWeeklyChange.compareTo(
+                            maximumAllowedLoss
+                    ) > 0) {
+
+                        warnings.add(
+                                new CalorieWarning(
+                                        CalorieWarningCode
+                                                .TARGET_RATE_TOO_AGGRESSIVE,
+                                        "The requested weekly weight-loss "
+                                                + "rate exceeds the applicable "
+                                                + "safety boundary."
+                                )
+                        );
+                    }
+                }
+
+                case WEIGHT_GAIN,
+                     MUSCLE_GAIN -> {
+
+                    BigDecimal maximumAllowedGain =
+                            constraints.maximumWeeklyWeightGain();
+
+                    if (maximumAllowedGain != null
+                            && requestedWeeklyChange.compareTo(
+                            maximumAllowedGain
+                    ) > 0) {
+
+                        warnings.add(
+                                new CalorieWarning(
+                                        CalorieWarningCode
+                                                .TARGET_RATE_TOO_AGGRESSIVE,
+                                        "The requested weekly weight-gain "
+                                                + "rate exceeds the applicable "
+                                                + "safety boundary."
+                                )
+                        );
+                    }
+                }
+
+                default -> {
+                    // Weekly weight change is not relevant
+                    // to maintenance/general-health goals.
+                }
+            }
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 5. TIMELINE VALIDATION
+         * ---------------------------------------------------------
+         */
+
+        if (!calorieTarget.isTimelineAchievable()) {
+
+            warnings.add(
+                    new CalorieWarning(
+                            CalorieWarningCode.TARGET_DATE_TOO_SOON,
+                            "The requested target date is not achievable "
+                                    + "at the calculated weekly rate. "
+                                    + "A longer timeline is recommended."
+                    )
+            );
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 6. DETERMINE FINAL STATUS
+         * ---------------------------------------------------------
+         */
+
+        CalorieSafetyStatus status;
+
+        if (constraints.requiresClinicalReview()) {
+
+            status = CalorieSafetyStatus.CLINICAL_REVIEW_REQUIRED;
+
+        } else if (adjusted) {
+
+            status = CalorieSafetyStatus.ADJUSTED;
+
+        } else if (!warnings.isEmpty()) {
+
+            status = CalorieSafetyStatus.WARNING;
+
+        } else {
+
+            status = CalorieSafetyStatus.SAFE;
+        }
+
+
+        /*
+         * ---------------------------------------------------------
+         * 7. BUILD RESULT
+         * ---------------------------------------------------------
+         */
+
+        return new CalorieSafetyResult(
+                originalCalories,
+                finalCalories,
+                status,
+                adjusted,
+                constraints.requiresClinicalReview(),
+                List.copyOf(warnings)
+        );
+    }
+
+    private BigDecimal toBigDecimal(Double value) {
+
+        return value == null
+                ? null
+                : BigDecimal.valueOf(value);
+    }
 
     private void applyMedicalConstraint(
             MedicalCondition condition,

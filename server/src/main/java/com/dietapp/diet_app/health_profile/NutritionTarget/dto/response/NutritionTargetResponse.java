@@ -1,47 +1,27 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.dto.response;
 
-import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ActivityLevel;
-import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalculationMethod;
-import lombok.*;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.CalorieSafetyStatus;
+import lombok.Builder;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.List;
 
-@Getter
-@Setter
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class NutritionTargetResponse {
+public record NutritionTargetResponse(
 
-    private UUID id;
+        BigDecimal tdee,
 
-    private BigDecimal weightUsedKg;
+        BigDecimal proposedCalories,
 
-    private BigDecimal bmr;
+        BigDecimal finalCalories,
 
-    private BigDecimal tdee;
+        boolean safetyAdjusted,
 
-    private BigDecimal targetCalories;
+        CalorieSafetyStatus status,
 
-    private BigDecimal proteinGrams;
+        boolean requiresClinicalReview,
 
-    private BigDecimal carbohydrateGrams;
+        List<CalorieWarning> warnings
 
-    private BigDecimal fatGrams;
-
-    private BigDecimal fiberGrams;
-
-    private BigDecimal waterMl;
-
-    private BigDecimal calorieAdjustment;
-
-    private ActivityLevel activityLevel;
-
-    private CalculationMethod calculationMethod;
-
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
+) {
 }

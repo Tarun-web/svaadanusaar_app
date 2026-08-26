@@ -70,7 +70,6 @@ public class GoalCalorieCalculator {
     public CalorieTargetResult calculate(
             PersonalProfile personalProfile,
             FitnessGoalProfile fitnessGoalProfile,
-            MedicalProfile medicalProfile,
             Collection<ActivityProfile> activities
     ) {
 
