@@ -8,8 +8,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class VerifyPaymentRequest {
-    private String planId;
     private String razorpayOrderId;
+
+    private String razorpaySubscriptionId;
+
     private String razorpayPaymentId;
+
     private String razorpaySignature;
 }

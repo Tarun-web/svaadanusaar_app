@@ -22,12 +22,12 @@ public class SubscriptionController {
     private final SubscriptionService subscriptionService;
 
     // Start a new subscription
-    @PostMapping("/start")
-    public SubscriptionStatusResponse startSubscription(@RequestBody @Valid StartSubscriptionRequest req,
-                                                        Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return subscriptionService.startSubscription(userId, req.getPlanId());
-    }
+//    @PostMapping("/start")
+//    public UserSubscription startSubscription(@RequestBody @Valid StartSubscriptionRequest req,
+//                                                        Authentication auth) {
+//        UUID userId = (UUID) auth.getPrincipal();
+//        return subscriptionService.startSubscription(userId, req.getPlanId());
+//    }
 
     // cancel subscription
     @PostMapping("/cancel")

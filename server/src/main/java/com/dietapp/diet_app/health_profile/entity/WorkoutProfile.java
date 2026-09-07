@@ -82,11 +82,6 @@ public class WorkoutProfile extends BaseEntity {
     @Column(nullable = false)
     private Boolean includePostWorkoutMeal = true;
 
-    /**
-     * User's preferred weekly rest day.
-     */
-    @Enumerated(EnumType.STRING)
-    private DayOfWeek preferredRestDay;
 
     // ============================================================
     // TODO (Future Enhancements)

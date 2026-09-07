@@ -1,8 +1,8 @@
 package com.dietapp.diet_app.payment.controller;
 
-import com.dietapp.diet_app.payment.dto.request.CreateOrderRequest;
+import com.dietapp.diet_app.payment.dto.request.CreatePaymentRequest;
 import com.dietapp.diet_app.payment.dto.request.VerifyPaymentRequest;
-import com.dietapp.diet_app.payment.dto.response.CreateOrderResponse;
+import com.dietapp.diet_app.payment.dto.response.CreatePaymentResponse;
 import com.dietapp.diet_app.payment.service.PaymentService;
 import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.Authenticator;
 import java.util.UUID;
 
 @RestController
@@ -23,15 +22,17 @@ public class PaymentController {
     private final PaymentService paymentService;
 
     // Method to create order using RazorPay Client
-    @PostMapping("/create-order")
-    public CreateOrderResponse createPayment(@RequestBody CreateOrderRequest createOrderRequest,
+    @PostMapping("/create")
+    public CreatePaymentResponse createPayment(@RequestBody CreatePaymentRequest createPaymentRequest,
                                              Authentication auth) throws RazorpayException {
 
-        // fetch user
-        UUID user = (UUID) auth.getPrincipal();
+        UUID userId = (UUID) auth.getPrincipal();
 
-        // call the paymentService
-        return paymentService.createOrder(user, createOrderRequest.getPlanId());
+        return paymentService.createPayment(
+                userId,
+                createPaymentRequest.getPlanId(),
+                createPaymentRequest.isAutoRenew()
+        );
 
     }
 

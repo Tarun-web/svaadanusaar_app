@@ -32,6 +32,12 @@ public class Payment {
 
     private String status;
 
+    @Column(name = "plan_id")
+    private String planId;
+
+    @Column(name = "razorpay_subscription_id")
+    private String razorpaySubscriptionId;
+
     private Instant createdAt;
 
     private Instant updatedAt;

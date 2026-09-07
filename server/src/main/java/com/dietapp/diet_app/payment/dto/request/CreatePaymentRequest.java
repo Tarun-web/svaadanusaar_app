@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-public class CreateOrderRequest {
+public class CreatePaymentRequest {
     private String planId;
+    private boolean autoRenew;
 }

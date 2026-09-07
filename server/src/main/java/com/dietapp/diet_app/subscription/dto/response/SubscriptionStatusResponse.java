@@ -13,7 +13,6 @@ public class SubscriptionStatusResponse {
     private Instant startsAt;
     private Instant endsAt;
     private String status;
-
 }
 
 

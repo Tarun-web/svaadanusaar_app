@@ -1,10 +1,7 @@
 package com.dietapp.diet_app.subscription.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,8 +10,7 @@ import java.util.UUID;
 @Table(name = "user_subscriptions")
 @AllArgsConstructor
 @NoArgsConstructor
-@Getter
-@Setter
+@Data
 public class UserSubscription {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -31,6 +27,9 @@ public class UserSubscription {
     private Instant endsAt;
     private String status; // ACTIVE, EXPIRED, CANCELLED
     private boolean autoRenew;
+
+    @Column(name = "razorpay_subscription_id")
+    private String razorpaySubscriptionId;
 
     private Instant createdAt;
     private Instant updatedAt;

@@ -28,14 +28,20 @@ public class SubscriptionService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
 
     // Start a new subscription
-    public SubscriptionStatusResponse startSubscription(UUID userId, String planId) {
-        // Implementation for starting a subscription
-        // Validate plan
-        SubscriptionPlan plan = subscriptionPlanRepository.findById(planId)
-                .orElseThrow(() -> new RuntimeException("Invalid plan"));
+    @Transactional
+    public UserSubscription startSubscription(
+            UUID userId,
+            String planId,
+            boolean autoRenew,
+            String razorpaySubscriptionId
+    ) {
+        SubscriptionPlan plan =
+                subscriptionPlanRepository.findById(planId)
+                        .orElseThrow(() ->
+                                new RuntimeException("Invalid plan"));
 
-        // end existing subscription if any
-        userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
+        userSubscriptionRepository
+                .findFirstByUserIdAndStatus(userId, "ACTIVE")
                 .ifPresent(subscription -> {
                     subscription.setStatus("EXPIRED");
                     subscription.setUpdatedAt(Instant.now());
@@ -43,50 +49,48 @@ public class SubscriptionService {
                 });
 
         Instant now = Instant.now();
-//        Instant endsAt = now.plus(plan.getMonths(), ChronoUnit.MONTHS);
+
         Instant endsAt = now
                 .atZone(ZoneId.systemDefault())
                 .plusMonths(plan.getMonths())
-                .toInstant(); // For testing, 30 days instead of months
+                .toInstant();
 
-        // Create new subscription
-        UserSubscription newSubscription = new UserSubscription();
+        UserSubscription newSubscription =
+                new UserSubscription();
+
         newSubscription.setUserId(userId);
         newSubscription.setPlanId(planId);
         newSubscription.setStartsAt(now);
         newSubscription.setEndsAt(endsAt);
         newSubscription.setStatus("ACTIVE");
-        newSubscription.setAutoRenew(false);
+        newSubscription.setAutoRenew(autoRenew);
+        newSubscription.setRazorpaySubscriptionId(
+                razorpaySubscriptionId
+        );
         newSubscription.setCreatedAt(now);
         newSubscription.setUpdatedAt(now);
 
-        userSubscriptionRepository.save(newSubscription);
-        return new SubscriptionStatusResponse(
-                newSubscription.getPlanId(),
-                newSubscription.getStartsAt(),
-                newSubscription.getEndsAt(),
-                newSubscription.getStatus()
-        );
+        return userSubscriptionRepository.save(newSubscription);
     }
 
     // Cancel subscription
-    public SubscriptionStatusResponse cancelSubscription(UUID userId){
-        UserSubscription sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
-                .orElseThrow(() -> new RuntimeException("No active subscription found"));
-
-        Instant now = Instant.now();
-
-        sub.setStatus("CANCELLED");
-        sub.setUpdatedAt(now);
-        userSubscriptionRepository.save(sub);
-
-        return new SubscriptionStatusResponse(
-                sub.getPlanId(),
-                sub.getStartsAt(),
-                now,
-                "CANCELLED"
-        );
-    }
+//    public SubscriptionStatusResponse cancelSubscription(UUID userId){
+//        UserSubscription sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
+//                .orElseThrow(() -> new RuntimeException("No active subscription found"));
+//
+//        Instant now = Instant.now();
+//
+//        sub.setStatus("CANCELLED");
+//        sub.setUpdatedAt(now);
+//        userSubscriptionRepository.save(sub);
+//
+//        return new SubscriptionStatusResponse(
+//                sub.getPlanId(),
+//                sub.getStartsAt(),
+//                now,
+//                "CANCELLED"
+//        );
+//    }
 
     // Get current subscription status for a user
     public SubscriptionStatusResponse getSubscriptionStatus(UUID userId) {
