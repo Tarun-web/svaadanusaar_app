@@ -97,36 +97,42 @@ public class SubscriptionService {
         // First, check if subscription has expired and auto-update if needed
         Optional<UserSubscription> sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
 
-        if (sub.isPresent()) {
-            UserSubscription subscription = sub.get();
-            LocalDateTime endsAtLocal = subscription.getEndsAt()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDateTime();
+        if (sub.isEmpty()) {
+            return new SubscriptionStatusResponse(
+                    null,
+                    null,
+                    null,
+                    "NO_SUBSCRIPTION"
+            );
+        }
 
-            // If subscription has ended, mark as EXPIRED
-            if (LocalDateTime.now().isAfter(endsAtLocal)) {
-                subscription.setStatus("EXPIRED");
-                subscription.setUpdatedAt(Instant.now());
-                userSubscriptionRepository.save(subscription);
+        UserSubscription subscription = sub.get();
 
-                return new SubscriptionStatusResponse(
-                        subscription.getPlanId(),
-                        subscription.getStartsAt(),
-                        subscription.getEndsAt(),
-                        "EXPIRED"
-                );
-            }
+        Instant now = Instant.now();
+
+        if (subscription.getEndsAt() != null
+                && !now.isBefore(subscription.getEndsAt())) {
+
+            subscription.setStatus("EXPIRED");
+            subscription.setUpdatedAt(now);
+
+            userSubscriptionRepository.save(subscription);
 
             return new SubscriptionStatusResponse(
                     subscription.getPlanId(),
                     subscription.getStartsAt(),
                     subscription.getEndsAt(),
-                    "ACTIVE"
+                    "EXPIRED"
             );
         }
 
-        // No active subscription
-        return new SubscriptionStatusResponse(null, null, null, "NO_SUBSCRIPTION");
+        return new SubscriptionStatusResponse(
+                subscription.getPlanId(),
+                subscription.getStartsAt(),
+                subscription.getEndsAt(),
+                "ACTIVE"
+        );
+
     }
 
     // Get subscription history for a user (all subscriptions, newest first)

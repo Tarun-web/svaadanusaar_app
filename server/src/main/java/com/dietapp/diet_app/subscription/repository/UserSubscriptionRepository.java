@@ -19,4 +19,6 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
     // Find subscriptions that have ended but not yet marked EXPIRED
     @Query("SELECT s FROM UserSubscription s WHERE s.endsAt < :now AND s.status != 'EXPIRED' AND s.status != 'CANCELLED'")
     List<UserSubscription> findExpiredSubscriptions(@Param("now") LocalDateTime now);
+
+    Optional<UserSubscription> findByRazorpaySubscriptionId(String razorpaySubscriptionId);
 }
