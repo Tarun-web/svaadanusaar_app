@@ -55,11 +55,11 @@ public class PaymentService {
             return createRazorpaySubscription(userId, plan);
         }
 
-        return createRazorparOrder(userId, plan.getId());
+        return createRazorpayOrder(userId, plan.getId());
     }
 
     // method to create order without subscription (one time payment)
-    public CreatePaymentResponse createRazorparOrder(UUID userId, String planId) throws RazorpayException {
+    public CreatePaymentResponse createRazorpayOrder(UUID userId, String planId) throws RazorpayException {
 
         // fetch the existing plan
         SubscriptionPlan plan = subscriptionPlanRepository
@@ -83,6 +83,8 @@ public class PaymentService {
 
         payment.setUserId(userId);
 
+        payment.setPlanId(plan.getId());
+
         payment.setProvider("RAZORPAY");
 
         payment.setOrderId(
@@ -97,6 +99,8 @@ public class PaymentService {
 
         payment.setCreatedAt(
                 Instant.now());
+
+        payment.setUpdatedAt(Instant.now());
 
         paymentRepository.save(payment);
 
@@ -150,6 +154,32 @@ public class PaymentService {
 
         String razorpaySubscriptionId =
                 razorpaySubscription.get("id");
+
+        Payment payment = new Payment();
+
+        payment.setId(UUID.randomUUID());
+
+        payment.setUserId(userId);
+
+        payment.setPlanId(plan.getId());
+
+        payment.setProvider("RAZORPAY");
+
+        payment.setRazorpaySubscriptionId(
+                razorpaySubscriptionId
+        );
+
+        payment.setAmount(plan.getPrice());
+
+        payment.setCurrency("INR");
+
+        payment.setStatus("PENDING");
+
+        payment.setCreatedAt(Instant.now());
+
+        payment.setUpdatedAt(Instant.now());
+
+        paymentRepository.save(payment);
 
         /*
          * We don't yet create the ACTIVE local subscription.
@@ -260,7 +290,7 @@ public class PaymentService {
         paymentRepository.save(payment);
 
         // now activate the subscription
-        subscriptionService.startSubscription(
+        subscriptionService.createSubscription(
                 userId,
                 payment.getPlanId(),
                 false,
@@ -333,13 +363,12 @@ public class PaymentService {
 
         paymentRepository.save(payment);
 
-        UserSubscription subscription =
-                subscriptionService.startSubscription(
-                        userId,
-                        payment.getPlanId(),
-                        true,
-                        request.getRazorpaySubscriptionId()
-                );
+        subscriptionService.createSubscription(
+                userId,
+                payment.getPlanId(),
+                true,
+                request.getRazorpaySubscriptionId()
+        );
 
     }
 

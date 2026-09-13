@@ -4,6 +4,7 @@ import com.dietapp.diet_app.subscription.dto.request.StartSubscriptionRequest;
 import com.dietapp.diet_app.subscription.dto.response.SubscriptionStatusResponse;
 import com.dietapp.diet_app.subscription.entity.UserSubscription;
 import com.dietapp.diet_app.subscription.service.SubscriptionService;
+import com.razorpay.RazorpayException;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,7 @@ public class SubscriptionController {
 
     // cancel subscription
     @PostMapping("/cancel")
-    public SubscriptionStatusResponse cancelSubscription(Authentication auth) {
+    public SubscriptionStatusResponse cancelSubscription(Authentication auth) throws RazorpayException {
         UUID userId = (UUID) auth.getPrincipal();
         return subscriptionService.cancelSubscription(userId);
     }

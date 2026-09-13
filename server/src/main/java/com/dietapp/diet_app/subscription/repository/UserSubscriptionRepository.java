@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,8 +18,16 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
     List<UserSubscription> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
 
     // Find subscriptions that have ended but not yet marked EXPIRED
-    @Query("SELECT s FROM UserSubscription s WHERE s.endsAt < :now AND s.status != 'EXPIRED' AND s.status != 'CANCELLED'")
-    List<UserSubscription> findExpiredSubscriptions(@Param("now") LocalDateTime now);
+    @Query("""
+       SELECT s
+       FROM UserSubscription s
+       WHERE s.endsAt < :now
+       AND s.status != 'EXPIRED'
+       AND s.status != 'CANCELLED'
+       """)
+    List<UserSubscription> findExpiredSubscriptions(
+            @Param("now") Instant now
+    );
 
     Optional<UserSubscription> findByRazorpaySubscriptionId(String razorpaySubscriptionId);
 }

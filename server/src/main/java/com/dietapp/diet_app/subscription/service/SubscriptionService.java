@@ -5,13 +5,14 @@ import com.dietapp.diet_app.subscription.entity.UserSubscription;
 import com.dietapp.diet_app.subscription.repository.UserSubscriptionRepository;
 import com.dietapp.diet_app.subscription_plan.entity.SubscriptionPlan;
 import com.dietapp.diet_app.subscription_plan.repository.SubscriptionPlanRepository;
+import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
 import jakarta.transaction.Transactional;
-import lombok.AllArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -19,17 +20,15 @@ import java.util.UUID;
 
 @Transactional
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class SubscriptionService {
 
-    @Autowired
     private final UserSubscriptionRepository userSubscriptionRepository;
-    @Autowired
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final RazorpayClient razorpayClient;
 
-    // Start a new subscription
-    @Transactional
-    public UserSubscription startSubscription(
+    // Create a local subscription after successful payment verification
+    public UserSubscription createSubscription(
             UUID userId,
             String planId,
             boolean autoRenew,
@@ -40,6 +39,7 @@ public class SubscriptionService {
                         .orElseThrow(() ->
                                 new RuntimeException("Invalid plan"));
 
+        // Expire the user's previous active subscription
         userSubscriptionRepository
                 .findFirstByUserIdAndStatus(userId, "ACTIVE")
                 .ifPresent(subscription -> {
@@ -73,29 +73,47 @@ public class SubscriptionService {
         return userSubscriptionRepository.save(newSubscription);
     }
 
-    // Cancel subscription
-//    public SubscriptionStatusResponse cancelSubscription(UUID userId){
-//        UserSubscription sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE")
-//                .orElseThrow(() -> new RuntimeException("No active subscription found"));
-//
-//        Instant now = Instant.now();
-//
-//        sub.setStatus("CANCELLED");
-//        sub.setUpdatedAt(now);
-//        userSubscriptionRepository.save(sub);
-//
-//        return new SubscriptionStatusResponse(
-//                sub.getPlanId(),
-//                sub.getStartsAt(),
-//                now,
-//                "CANCELLED"
-//        );
-//    }
+    // Renew an existing Razorpay subscription
+    public void renewSubscription(
+            String razorpaySubscriptionId,
+            Instant currentEnd
+    ) {
+        UserSubscription subscription =
+                userSubscriptionRepository
+                        .findByRazorpaySubscriptionId(
+                                razorpaySubscriptionId
+                        )
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Local subscription not found for Razorpay subscription: "
+                                                + razorpaySubscriptionId
+                                ));
 
-    // Get current subscription status for a user
+        subscription.setEndsAt(currentEnd);
+        subscription.setStatus("ACTIVE");
+        subscription.setAutoRenew(true);
+        subscription.setUpdatedAt(Instant.now());
+
+        userSubscriptionRepository.save(subscription);
+    }
+
+    // disable autorenew
+    public void disableAutoRenew(String razorpaySubscriptionId) {
+        userSubscriptionRepository
+                .findByRazorpaySubscriptionId(razorpaySubscriptionId)
+                .ifPresent(subscription -> {
+                    subscription.setAutoRenew(false);
+                    subscription.setUpdatedAt(Instant.now());
+                    userSubscriptionRepository.save(subscription);
+                });
+    }
+
+    // Get current subscription status
     public SubscriptionStatusResponse getSubscriptionStatus(UUID userId) {
-        // First, check if subscription has expired and auto-update if needed
-        Optional<UserSubscription> sub = userSubscriptionRepository.findFirstByUserIdAndStatus(userId, "ACTIVE");
+
+        Optional<UserSubscription> sub =
+                userSubscriptionRepository
+                        .findFirstByUserIdAndStatus(userId, "ACTIVE");
 
         if (sub.isEmpty()) {
             return new SubscriptionStatusResponse(
@@ -132,32 +150,77 @@ public class SubscriptionService {
                 subscription.getEndsAt(),
                 "ACTIVE"
         );
-
     }
 
-    // Get subscription history for a user (all subscriptions, newest first)
+    // Get subscription history
     public List<UserSubscription> getSubscriptionHistory(UUID userId) {
-        return userSubscriptionRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
+        return userSubscriptionRepository
+                .findAllByUserIdOrderByCreatedAtDesc(userId);
     }
 
-    // Background job: mark all expired subscriptions as EXPIRED (scheduled to run nightly)
-    @Transactional
+    // Cancel Razorpay subscription at the end of current billing cycle
+    public SubscriptionStatusResponse cancelSubscription(UUID userId)
+            throws RazorpayException {
+
+        UserSubscription subscription =
+                userSubscriptionRepository
+                        .findFirstByUserIdAndStatus(userId, "ACTIVE")
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "No active subscription found"
+                                ));
+
+        if (!subscription.isAutoRenew()
+                || subscription.getRazorpaySubscriptionId() == null) {
+
+            throw new RuntimeException(
+                    "Subscription is not set to auto-renew"
+            );
+        }
+
+        JSONObject options = new JSONObject();
+        options.put("cancel_at_cycle_end", 1);
+
+        razorpayClient.subscriptions.cancel(
+                subscription.getRazorpaySubscriptionId(),
+                options
+        );
+
+        subscription.setAutoRenew(false);
+        subscription.setUpdatedAt(Instant.now());
+
+        userSubscriptionRepository.save(subscription);
+
+        return new SubscriptionStatusResponse(
+                subscription.getPlanId(),
+                subscription.getStartsAt(),
+                subscription.getEndsAt(),
+                subscription.getStatus()
+        );
+    }
+
+    // Background job to mark expired subscriptions
     public void markExpiredSubscriptions() {
-        List<UserSubscription> expiredSubs = userSubscriptionRepository
-                .findExpiredSubscriptions(Instant.now()
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDateTime());
+
+        Instant now = Instant.now();
+
+        List<UserSubscription> expiredSubs =
+                userSubscriptionRepository
+                        .findExpiredSubscriptions(now);
 
         for (UserSubscription sub : expiredSubs) {
             sub.setStatus("EXPIRED");
-            sub.setUpdatedAt(Instant.now());
+            sub.setUpdatedAt(now);
         }
 
         if (!expiredSubs.isEmpty()) {
             userSubscriptionRepository.saveAll(expiredSubs);
-            System.out.println("Marked " + expiredSubs.size() + " subscriptions as EXPIRED");
+
+            System.out.println(
+                    "Marked "
+                            + expiredSubs.size()
+                            + " subscriptions as EXPIRED"
+            );
         }
     }
-
-
 }

@@ -88,6 +88,11 @@ public class PaymentWebhookService {
                     signature,
                     webhookSecret
             );
+            if (!isValid) {
+                throw new SecurityException(
+                        "Invalid webhook signature"
+                );
+            }
         } catch (RazorpayException e) {
             throw new SecurityException("Invalid webhook signature", e);
         }
@@ -101,7 +106,10 @@ public class PaymentWebhookService {
     }
 
     // handle subscription.charged event
-    private void handleSubscriptionCharged(JSONObject webhook, String eventId) {
+    private void handleSubscriptionCharged(
+            JSONObject webhook,
+            String eventId
+    ) {
 
         JSONObject payload =
                 webhook.getJSONObject("payload");
@@ -114,7 +122,6 @@ public class PaymentWebhookService {
         String razorpaySubscriptionId =
                 subscriptionEntity.getString("id");
 
-        // find the subscription by razorpaySubscriptionId
         UserSubscription subscription =
                 userSubscriptionRepository
                         .findByRazorpaySubscriptionId(
@@ -126,38 +133,39 @@ public class PaymentWebhookService {
                                                 + razorpaySubscriptionId
                                 ));
 
-        /*
-         * Razorpay has successfully charged
-         * the next billing cycle.
-         */
-        UUID userId = subscription.getUserId();
-
-        String planId = subscription.getPlanId();
-
-        // find the plan
-        SubscriptionPlan plan =
-                subscriptionPlanRepository
-                        .findById(planId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Plan not found: " + planId
-                                ));
-
         JSONObject paymentEntity =
-                payload.has("payment")
-                        ? payload
-                        .getJSONObject("payment")
-                        .getJSONObject("entity")
-                        : null;
+                payload.optJSONObject("payment");
+
+        String razorpayPaymentId = null;
+
+        if (paymentEntity != null) {
+            paymentEntity =
+                    paymentEntity.getJSONObject("entity");
+
+            razorpayPaymentId =
+                    paymentEntity.getString("id");
+        }
+
+        /*
+         * If /payments/verify already processed this payment,
+         * do not create another Payment record.
+         */
+        if (razorpayPaymentId != null
+                && paymentRepository
+                .findByPaymentId(razorpayPaymentId)
+                .isPresent()) {
+
+            return;
+        }
 
         Instant now = Instant.now();
 
         Payment payment = new Payment();
 
         payment.setId(UUID.randomUUID());
-        payment.setUserId(userId);
+        payment.setUserId(subscription.getUserId());
         payment.setSubscriptionId(subscription.getId());
-        payment.setPlanId(planId);
+        payment.setPlanId(subscription.getPlanId());
         payment.setProvider("RAZORPAY");
 
         payment.setRazorpaySubscriptionId(
@@ -167,7 +175,7 @@ public class PaymentWebhookService {
         if (paymentEntity != null) {
 
             payment.setPaymentId(
-                    paymentEntity.getString("id")
+                    razorpayPaymentId
             );
 
             payment.setAmount(
@@ -177,9 +185,11 @@ public class PaymentWebhookService {
             payment.setCurrency(
                     paymentEntity.getString("currency")
             );
-        } else{
-            payment.setAmount(plan.getPrice());
-            payment.setCurrency("INR");
+
+        } else {
+            throw new RuntimeException(
+                    "Payment entity missing from subscription.charged webhook"
+            );
         }
 
         payment.setStatus("SUCCESS");
@@ -190,17 +200,15 @@ public class PaymentWebhookService {
         paymentRepository.save(payment);
 
         /*
-         * Move the local subscription into
-         * the next billing period.
+         * Use Razorpay's actual billing-cycle end.
          */
-        subscription.setStartsAt(now);
+        long currentEnd =
+                subscriptionEntity.getLong("current_end");
 
-        subscription.setEndsAt(
-                now.atZone(ZoneId.systemDefault())
-                        .plusMonths(plan.getMonths())
-                        .toInstant()
-        );
+        Instant endsAt =
+                Instant.ofEpochSecond(currentEnd);
 
+        subscription.setEndsAt(endsAt);
         subscription.setStatus("ACTIVE");
         subscription.setAutoRenew(true);
         subscription.setUpdatedAt(now);
@@ -230,7 +238,6 @@ public class PaymentWebhookService {
                                 ));
 
         subscription.setAutoRenew(false);
-        subscription.setStatus("CANCELLED");
         subscription.setUpdatedAt(Instant.now());
 
         userSubscriptionRepository.save(subscription);
