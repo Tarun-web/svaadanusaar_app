@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS ux_payments_razorpay_subscription_id;

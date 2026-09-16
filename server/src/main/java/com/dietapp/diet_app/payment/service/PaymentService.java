@@ -5,6 +5,7 @@ import com.dietapp.diet_app.payment.dto.response.CreatePaymentResponse;
 import com.dietapp.diet_app.payment.repository.PaymentRepository;
 import com.dietapp.diet_app.subscription.dto.response.SubscriptionStatusResponse;
 import com.dietapp.diet_app.subscription.entity.UserSubscription;
+import com.dietapp.diet_app.subscription.repository.UserSubscriptionRepository;
 import com.dietapp.diet_app.subscription.service.SubscriptionService;
 import com.dietapp.diet_app.subscription_plan.entity.SubscriptionPlan;
 import com.dietapp.diet_app.subscription_plan.repository.SubscriptionPlanRepository;
@@ -27,6 +28,7 @@ public class PaymentService {
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final PaymentRepository paymentRepository;
     private final SubscriptionService subscriptionService;
+    private final UserSubscriptionRepository userSubscriptionRepository;
 
 
     // fetch the razorpay key
@@ -78,8 +80,6 @@ public class PaymentService {
 
         // create a payment with status as PENDING
         Payment payment = new Payment();
-
-        payment.setId(UUID.randomUUID());
 
         payment.setUserId(userId);
 
@@ -156,8 +156,6 @@ public class PaymentService {
                 razorpaySubscription.get("id");
 
         Payment payment = new Payment();
-
-        payment.setId(UUID.randomUUID());
 
         payment.setUserId(userId);
 
@@ -334,26 +332,54 @@ public class PaymentService {
             );
         }
 
+        /*
+         * First try to find the exact payment using
+         * Razorpay's payment ID.
+         *
+         * This handles the case where the webhook
+         * already processed the payment.
+         */
         Payment payment =
                 paymentRepository
-                        .findByRazorpaySubscriptionId(
-                                request.getRazorpaySubscriptionId()
+                        .findByPaymentId(
+                                request.getRazorpayPaymentId()
                         )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Subscription payment not found"
-                                ));
+                        .orElse(null);
 
+        /*
+         * If the webhook has not processed it yet,
+         * find the PENDING payment created during
+         * /payments/create.
+         */
+        if (payment == null) {
+
+            payment =
+                    paymentRepository
+                            .findFirstByRazorpaySubscriptionIdAndStatusOrderByCreatedAtDesc(
+                                    request.getRazorpaySubscriptionId(),
+                                    "PENDING"
+                            )
+                            .orElseThrow(() ->
+                                    new RuntimeException(
+                                            "Subscription payment not found"
+                                    ));
+        }
+
+        /*
+         * Security check.
+         */
         if (!payment.getUserId().equals(userId)) {
             throw new RuntimeException(
                     "Subscription does not belong to user"
             );
         }
 
-        if (payment.getPaymentId() != null) {
-            return;
-        }
-
+        /*
+         * Mark the payment as SUCCESS.
+         *
+         * If the webhook already did this, these
+         * values are simply kept consistent.
+         */
         payment.setPaymentId(
                 request.getRazorpayPaymentId()
         );
@@ -363,13 +389,42 @@ public class PaymentService {
 
         paymentRepository.save(payment);
 
-        subscriptionService.createSubscription(
-                userId,
-                payment.getPlanId(),
-                true,
-                request.getRazorpaySubscriptionId()
+        /*
+         * Check whether the webhook already created
+         * the local subscription.
+         */
+        UserSubscription subscription =
+                userSubscriptionRepository
+                        .findByRazorpaySubscriptionId(
+                                request.getRazorpaySubscriptionId()
+                        )
+                        .orElse(null);
+
+        /*
+         * Only create the local subscription if it
+         * doesn't already exist.
+         */
+        if (subscription == null) {
+
+            subscription =
+                    subscriptionService.createSubscription(
+                            userId,
+                            payment.getPlanId(),
+                            true,
+                            request.getRazorpaySubscriptionId()
+                    );
+        }
+
+        /*
+         * Link the payment to the local subscription.
+         */
+        payment.setSubscriptionId(
+                subscription.getId()
         );
 
+        payment.setUpdatedAt(Instant.now());
+
+        paymentRepository.save(payment);
     }
 
 

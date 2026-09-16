@@ -35,6 +35,10 @@ public class PaymentWebhookService {
     @Transactional
     public void processWebhook(String payload, String signatureId, String eventId){
 
+        System.out.println("========== RAZORPAY WEBHOOK ==========");
+        System.out.println(payload);
+        System.out.println("======================================");
+
         // verify signature
         verifySignature(payload, signatureId);
 
@@ -61,6 +65,10 @@ public class PaymentWebhookService {
 
             case "subscription.completed" ->
                     handleSubscriptionCompleted(webhook, eventId);
+            case "payment.failed" ->
+                    handlePaymentFailed(payload, eventId);
+            case "subscription.pending" ->
+                    handleSubscriptionPending(payload, eventId);
 
             default -> {
                 // Ignore events we haven't implemented yet
@@ -70,7 +78,6 @@ public class PaymentWebhookService {
         PaymentWebhookEvent webhookEvent =
                 new PaymentWebhookEvent();
 
-        webhookEvent.setId(UUID.randomUUID());
         webhookEvent.setProviderEventId(eventId);
         webhookEvent.setEventType(event);
         webhookEvent.setReceivedAt(Instant.now());
@@ -122,85 +129,119 @@ public class PaymentWebhookService {
         String razorpaySubscriptionId =
                 subscriptionEntity.getString("id");
 
+        JSONObject paymentEntity =
+                payload
+                        .getJSONObject("payment")
+                        .getJSONObject("entity");
+
+        String razorpayPaymentId =
+                paymentEntity.getString("id");
+
+        Instant now = Instant.now();
+
+        /*
+         * First, check whether this exact Razorpay payment
+         * was already processed.
+         */
+        Payment payment =
+                paymentRepository
+                        .findByPaymentId(razorpayPaymentId)
+                        .orElse(null);
+
+        /*
+         * If it doesn't exist, look for the PENDING payment
+         * created when we created the Razorpay subscription.
+         */
+        if (payment == null) {
+
+            payment =
+                    paymentRepository
+                            .findFirstByRazorpaySubscriptionIdAndStatusOrderByCreatedAtDesc(
+                                    razorpaySubscriptionId,
+                                    "PENDING"
+                            )
+                            .orElse(null);
+        }
+
+        /*
+         * If no local payment exists at all, create one.
+         */
+        if (payment == null) {
+
+            payment = new Payment();
+
+            payment.setUserId(null);
+            payment.setPlanId(null);
+            payment.setSubscriptionId(null);
+            payment.setProvider("RAZORPAY");
+            payment.setRazorpaySubscriptionId(
+                    razorpaySubscriptionId
+            );
+            payment.setCreatedAt(now);
+        }
+
+        /*
+         * Fill/update payment information from Razorpay.
+         */
+        payment.setPaymentId(razorpayPaymentId);
+        payment.setAmount(
+                paymentEntity.getInt("amount") / 100
+        );
+        payment.setCurrency(
+                paymentEntity.getString("currency")
+        );
+        payment.setStatus("SUCCESS");
+        payment.setProviderEventId(eventId);
+        payment.setUpdatedAt(now);
+
+        /*
+         * Find the local subscription.
+         */
         UserSubscription subscription =
                 userSubscriptionRepository
                         .findByRazorpaySubscriptionId(
                                 razorpaySubscriptionId
                         )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Local subscription not found: "
-                                                + razorpaySubscriptionId
-                                ));
+                        .orElse(null);
 
-        JSONObject paymentEntity =
-                payload.optJSONObject("payment");
+        /*
+         * If /verify has not created the local subscription yet,
+         * create it from the PENDING payment.
+         */
+        if (subscription == null) {
 
-        String razorpayPaymentId = null;
+            if (payment.getUserId() == null
+                    || payment.getPlanId() == null) {
 
-        if (paymentEntity != null) {
-            paymentEntity =
-                    paymentEntity.getJSONObject("entity");
+                throw new RuntimeException(
+                        "Cannot create local subscription. "
+                                + "Pending payment information is missing."
+                );
+            }
 
-            razorpayPaymentId =
-                    paymentEntity.getString("id");
+            subscription =
+                    createLocalSubscriptionFromWebhook(
+                            payment,
+                            subscriptionEntity
+                    );
         }
 
         /*
-         * If /payments/verify already processed this payment,
-         * do not create another Payment record.
+         * Make sure the payment is linked to the
+         * local subscription.
          */
-        if (razorpayPaymentId != null
-                && paymentRepository
-                .findByPaymentId(razorpayPaymentId)
-                .isPresent()) {
-
-            return;
-        }
-
-        Instant now = Instant.now();
-
-        Payment payment = new Payment();
-
-        payment.setId(UUID.randomUUID());
         payment.setUserId(subscription.getUserId());
         payment.setSubscriptionId(subscription.getId());
         payment.setPlanId(subscription.getPlanId());
-        payment.setProvider("RAZORPAY");
-
         payment.setRazorpaySubscriptionId(
                 razorpaySubscriptionId
         );
 
-        if (paymentEntity != null) {
-
-            payment.setPaymentId(
-                    razorpayPaymentId
-            );
-
-            payment.setAmount(
-                    paymentEntity.getInt("amount") / 100
-            );
-
-            payment.setCurrency(
-                    paymentEntity.getString("currency")
-            );
-
-        } else {
-            throw new RuntimeException(
-                    "Payment entity missing from subscription.charged webhook"
-            );
-        }
-
-        payment.setStatus("SUCCESS");
-        payment.setProviderEventId(eventId);
-        payment.setCreatedAt(now);
-        payment.setUpdatedAt(now);
-
         paymentRepository.save(payment);
 
         /*
-         * Use Razorpay's actual billing-cycle end.
+         * Razorpay's current_end is the actual end of
+         * the current paid billing cycle.
          */
         long currentEnd =
                 subscriptionEntity.getLong("current_end");
@@ -214,6 +255,45 @@ public class PaymentWebhookService {
         subscription.setUpdatedAt(now);
 
         userSubscriptionRepository.save(subscription);
+    }
+    private UserSubscription createLocalSubscriptionFromWebhook(
+            Payment payment,
+            JSONObject subscriptionEntity
+    ) {
+
+        Instant now = Instant.now();
+
+        long currentStart =
+                subscriptionEntity.getLong("current_start");
+
+        long currentEnd =
+                subscriptionEntity.getLong("current_end");
+
+        UserSubscription subscription =
+                new UserSubscription();
+
+        subscription.setUserId(payment.getUserId());
+        subscription.setPlanId(payment.getPlanId());
+
+        subscription.setStartsAt(
+                Instant.ofEpochSecond(currentStart)
+        );
+
+        subscription.setEndsAt(
+                Instant.ofEpochSecond(currentEnd)
+        );
+
+        subscription.setStatus("ACTIVE");
+        subscription.setAutoRenew(true);
+
+        subscription.setRazorpaySubscriptionId(
+                subscriptionEntity.getString("id")
+        );
+
+        subscription.setCreatedAt(now);
+        subscription.setUpdatedAt(now);
+
+        return userSubscriptionRepository.save(subscription);
     }
 
     // handle cancel subscription
@@ -307,6 +387,130 @@ public class PaymentWebhookService {
                                 ));
 
         subscription.setAutoRenew(false);
+        subscription.setUpdatedAt(Instant.now());
+
+        userSubscriptionRepository.save(subscription);
+    }
+
+    // handle failed payment
+    private void handlePaymentFailed(String payload, String eventId) {
+
+        JSONObject webhook = new JSONObject(payload);
+
+        JSONObject paymentEntity =
+                webhook.getJSONObject("payload")
+                        .getJSONObject("payment")
+                        .getJSONObject("entity");
+
+        String razorpayPaymentId =
+                paymentEntity.getString("id");
+
+        // Avoid duplicate payment records
+        if (paymentRepository.findByPaymentId(razorpayPaymentId).isPresent()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+
+        Payment payment = new Payment();
+
+        payment.setProvider("RAZORPAY");
+        payment.setPaymentId(razorpayPaymentId);
+
+        payment.setAmount(
+                paymentEntity.getInt("amount") / 100
+        );
+
+        payment.setCurrency(
+                paymentEntity.getString("currency")
+        );
+
+        payment.setStatus("FAILED");
+
+        payment.setProviderEventId(eventId);
+
+        payment.setCreatedAt(now);
+        payment.setUpdatedAt(now);
+
+        /*
+         * payment.failed does NOT reliably contain
+         * razorpay_subscription_id.
+         *
+         * We therefore create the FAILED payment first.
+         * subscription.pending will associate it with
+         * the local subscription.
+         */
+
+        paymentRepository.save(payment);
+    }
+
+    // handle pending subscription
+    private void handleSubscriptionPending(
+            String payload,
+            String eventId
+    ) {
+
+        JSONObject webhook = new JSONObject(payload);
+
+        JSONObject payloadObject =
+                webhook.getJSONObject("payload");
+
+        JSONObject subscriptionEntity =
+                payloadObject
+                        .getJSONObject("subscription")
+                        .getJSONObject("entity");
+
+        JSONObject paymentEntity =
+                payloadObject
+                        .getJSONObject("payment")
+                        .getJSONObject("entity");
+
+        String razorpaySubscriptionId =
+                subscriptionEntity.getString("id");
+
+        String razorpayPaymentId =
+                paymentEntity.getString("id");
+
+        UserSubscription subscription =
+                userSubscriptionRepository
+                        .findByRazorpaySubscriptionId(
+                                razorpaySubscriptionId
+                        )
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Local subscription not found: "
+                                                + razorpaySubscriptionId
+                                ));
+
+        /*
+         * Find the FAILED payment created by payment.failed
+         */
+        Payment payment =
+                paymentRepository
+                        .findByPaymentId(razorpayPaymentId)
+                        .orElse(null);
+
+        if (payment != null) {
+
+            payment.setUserId(subscription.getUserId());
+            payment.setSubscriptionId(subscription.getId());
+            payment.setPlanId(subscription.getPlanId());
+            payment.setRazorpaySubscriptionId(
+                    razorpaySubscriptionId
+            );
+
+            payment.setUpdatedAt(Instant.now());
+
+            paymentRepository.save(payment);
+        }
+
+        /*
+         * Razorpay is retrying the payment.
+         *
+         * Do NOT expire the user's current subscription.
+         * Access remains available until endsAt.
+         */
+
         subscription.setUpdatedAt(Instant.now());
 
         userSubscriptionRepository.save(subscription);
