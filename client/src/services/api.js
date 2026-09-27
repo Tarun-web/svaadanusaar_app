@@ -39,8 +39,11 @@ const normalizePhoneKey = (phone) => {
 const mockStore = {
   users: {}, // 10digitKey -> { name, email, phone }
   subscriptions: {}, // 10digitKey -> { planId, status, startsAt, endsAt }
+  healthProfiles: {}, // 10digitKey -> { onboardingCompleted, profileCompletionPercentage, sections: {...} }
   currentPhoneKey: null,
 };
+
+const verifiedEmailsLocalStore = {};
 
 export const setAuthToken = (token) => {
   authToken = token;
@@ -94,18 +97,28 @@ const request = async (endpoint, options = {}) => {
 
     if (!response.ok) {
       const errorMsg = typeof data === 'object' && data.message ? data.message : (typeof data === 'string' && data ? data : `API Failure (${response.status})`);
-      throw new Error(errorMsg);
+      const err = new Error(errorMsg);
+      err.status = response.status;
+      throw err;
     }
 
     return data;
   } catch (error) {
-    console.error(`❌ API FAILED [${method}] ${url}:`, error.message || error);
+    if (!options.suppressErrorLog) {
+      console.error(`❌ API FAILED [${method}] ${url}:`, error.message || error);
+    }
     console.log(`==================================================\n`);
     throw error;
   }
 };
 
 export const api = {
+  markEmailAsVerified: (emailOrPhone) => {
+    if (emailOrPhone) {
+      verifiedEmailsLocalStore[emailOrPhone] = true;
+    }
+  },
+
   // Auth: Verify OTP
   verifyOtp: async (phone, otp) => {
     const cleanDigits = phone.replace(/\D/g, '');
@@ -144,6 +157,7 @@ export const api = {
             phone: phoneWithPlus91,
             name: null,
             email: null,
+            emailVerified: false,
           };
         }
 
@@ -164,14 +178,20 @@ export const api = {
       return null;
     }
     try {
-      return await request('/users/me', {
+      const profile = await request('/users/me', {
         method: 'GET',
       });
+      if (profile) {
+        profile.emailVerified = profile.emailVerified === true;
+      }
+      return profile;
     } catch (backendError) {
       console.warn('Backend profile fetch failed. Returning local profile:', backendError.message);
       const phoneKey = mockStore.currentPhoneKey;
       if (phoneKey && mockStore.users[phoneKey]) {
-        return mockStore.users[phoneKey];
+        const user = mockStore.users[phoneKey];
+        user.emailVerified = user.emailVerified === true;
+        return user;
       }
       return null;
     }
@@ -186,7 +206,7 @@ export const api = {
       });
     } catch (backendError) {
       console.warn('Backend profile update failed. Saving local profile:', backendError.message);
-      const phoneKey = mockStore.currentPhoneKey || '9357810591';
+      const phoneKey = mockStore.currentPhoneKey || '9999999999';
       mockStore.users[phoneKey] = {
         userId: `usr-${phoneKey}`,
         phone: `+91${phoneKey}`,
@@ -194,6 +214,210 @@ export const api = {
         email: email,
       };
       return mockStore.users[phoneKey];
+    }
+  },
+
+  // Helper for mock health profile state
+  _getMockHealthProfile: (phoneKey) => {
+    const key = phoneKey || mockStore.currentPhoneKey || '9999999999';
+    if (!mockStore.healthProfiles[key]) {
+      mockStore.healthProfiles[key] = {
+        onboardingCompleted: false,
+        profileCompletionPercentage: 0,
+        completedSections: {},
+        personalProfile: null,
+        fitnessGoal: null,
+        nutritionPreference: null,
+        workoutProfile: null,
+        medicalProfile: null,
+        cookingProfile: null,
+        lifestylePreference: null,
+        supplementProfile: null,
+      };
+    }
+    return mockStore.healthProfiles[key];
+  },
+
+  _updateMockSection: (sectionKey, payload) => {
+    const hp = api._getMockHealthProfile();
+    hp[sectionKey] = payload;
+    hp.completedSections[sectionKey] = true;
+    const completedCount = Object.keys(hp.completedSections).length;
+    hp.profileCompletionPercentage = Math.min(100, Math.round((completedCount / 8) * 100));
+    hp.onboardingCompleted = hp.profileCompletionPercentage === 100;
+    return hp;
+  },
+
+  // Health Profile: Get Summary (onboardingCompleted, profileCompletionPercentage)
+  getHealthProfileSummary: async () => {
+    try {
+      return await request('/health-profile/me/summary', { method: 'GET', suppressErrorLog: true });
+    } catch (backendError) {
+      if (backendError.status === 404 || backendError.message?.includes('not found')) {
+        console.log('Health Profile container not found. Auto-creating Health Profile container in backend...');
+        try {
+          await api.createHealthProfile();
+          return { onboardingCompleted: false, profileCompletionPercentage: 0 };
+        } catch (createErr) {
+          console.warn('Auto-create container failed, using local fallback:', createErr.message);
+        }
+      } else {
+        console.warn('Backend Health Profile Summary fetch failed. Returning local state:', backendError.message);
+      }
+      const hp = api._getMockHealthProfile();
+      return {
+        onboardingCompleted: hp.onboardingCompleted,
+        profileCompletionPercentage: hp.profileCompletionPercentage,
+      };
+    }
+  },
+
+  // Health Profile: Get Details
+  getHealthProfileDetails: async () => {
+    try {
+      return await request('/health-profile/me', { method: 'GET', suppressErrorLog: true });
+    } catch (backendError) {
+      if (backendError.status === 404 || backendError.message?.includes('not found')) {
+        console.log('Health Profile details not found. Auto-creating Health Profile container in backend...');
+        try {
+          await api.createHealthProfile();
+        } catch (createErr) {
+          console.warn('Auto-create container failed, using local fallback:', createErr.message);
+        }
+      } else {
+        console.warn('Backend Health Profile Details fetch failed. Returning local state:', backendError.message);
+      }
+      const hp = api._getMockHealthProfile();
+      return {
+        healthProfile: {
+          onboardingCompleted: hp.onboardingCompleted,
+          profileCompletionPercentage: hp.profileCompletionPercentage,
+        },
+        personalProfile: hp.personalProfile,
+        fitnessGoal: hp.fitnessGoal,
+        nutritionPreference: hp.nutritionPreference,
+        workoutProfile: hp.workoutProfile,
+        medicalProfile: hp.medicalProfile,
+        cookingProfile: hp.cookingProfile,
+        lifestylePreference: hp.lifestylePreference,
+        supplementProfile: hp.supplementProfile,
+      };
+    }
+  },
+
+  // Health Profile: Create
+  createHealthProfile: async () => {
+    try {
+      return await request('/health-profile', { method: 'POST', suppressErrorLog: true });
+    } catch (backendError) {
+      if (backendError.status !== 409) {
+        console.warn('Backend Health Profile create warning:', backendError.message);
+      }
+      return api._getMockHealthProfile();
+    }
+  },
+
+  // 1. Personal Profile
+  updatePersonalProfile: async (payload) => {
+    try {
+      return await request('/health-profile/personal', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Personal Profile update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('personalProfile', payload);
+    }
+  },
+
+  // 2. Fitness Goal Profile
+  updateFitnessGoalProfile: async (payload) => {
+    try {
+      return await request('/health-profile/fitness-goal', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Fitness Goal update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('fitnessGoal', payload);
+    }
+  },
+
+  // 3. Nutrition Preference Profile
+  updateNutritionPreferenceProfile: async (payload) => {
+    try {
+      return await request('/health-profile/nutrition-preference', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Nutrition Preference update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('nutritionPreference', payload);
+    }
+  },
+
+  // 4. Workout Profile
+  updateWorkoutProfile: async (payload) => {
+    try {
+      return await request('/health-profile/workout', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Workout Profile update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('workoutProfile', payload);
+    }
+  },
+
+  // 5. Medical Profile
+  updateMedicalProfile: async (payload) => {
+    try {
+      return await request('/health-profile/medical', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Medical Profile update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('medicalProfile', payload);
+    }
+  },
+
+  // 6. Cooking Profile
+  updateCookingProfile: async (payload) => {
+    try {
+      return await request('/health-profile/cooking', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Cooking Profile update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('cookingProfile', payload);
+    }
+  },
+
+  // 7. Lifestyle Preference Profile
+  updateLifestylePreferenceProfile: async (payload) => {
+    try {
+      return await request('/health-profile/lifestyle', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Lifestyle Preference update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('lifestylePreference', payload);
+    }
+  },
+
+  // 8. Supplement Profile
+  updateSupplementProfile: async (payload) => {
+    try {
+      return await request('/health-profile/supplements', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+    } catch (backendError) {
+      console.warn('Backend Supplement Profile update failed. Saving locally:', backendError.message);
+      return api._updateMockSection('supplementProfile', payload);
     }
   },
 
@@ -222,7 +446,7 @@ export const api = {
       });
     } catch (backendError) {
       console.warn('Backend subscription status fetch failed. Returning local status:', backendError.message);
-      const phoneKey = mockStore.currentPhoneKey || '4372405953';
+      const phoneKey = mockStore.currentPhoneKey || '9999999999';
       const sub = mockStore.subscriptions[phoneKey];
       if (sub && sub.status === 'ACTIVE') {
         return sub;
@@ -240,7 +464,7 @@ export const api = {
       });
     } catch (backendError) {
       console.warn('Backend subscription start failed. Activating local plan:', backendError.message);
-      const phoneKey = mockStore.currentPhoneKey || '4372405953';
+      const phoneKey = mockStore.currentPhoneKey || '9999999999';
       const now = new Date();
       const endsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       
