@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "expo": "~54.0.0",
-    "expo-status-bar": "~2.0.0",
-    "react": "19.1.0",
-    "react-native": "0.81.0"
+    "expo": "~57.0.0",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
   },
   "scripts": {
     "start": "expo start --host lan --port 7777",

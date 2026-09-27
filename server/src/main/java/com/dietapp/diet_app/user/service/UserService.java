@@ -26,12 +26,7 @@ public class UserService {
     // Get user profile by user ID
     public UserProfileResponse getUserProfile(String userId) {
         return userRepository.findById(UUID.fromString(userId))
-                .map(user -> new UserProfileResponse(
-                        user.getId(),
-                        user.getPhone(),
-                        user.getName(),
-                        user.getEmail()
-                ))
+                .map(this::toResponse)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
     }
 
@@ -86,7 +81,8 @@ public class UserService {
                 user.getId(),
                 user.getPhone(),
                 user.getName(),
-                user.getEmail()
+                user.getEmail(),
+                user.isEmailVerified()
         );
     }
 }

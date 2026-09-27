@@ -7,6 +7,8 @@ import { api } from './src/services/api';
 import PhoneInputScreen from './src/screens/PhoneInputScreen';
 import OtpScreen from './src/screens/OtpScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
+import HealthProfileOnboardingScreen from './src/screens/HealthProfileOnboardingScreen';
 import SubscriptionPlansScreen from './src/screens/SubscriptionPlansScreen';
 import HomeScreen from './src/screens/HomeScreen';
 
@@ -15,7 +17,34 @@ export default function App() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
+  const [hpSummary, setHpSummary] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  const determineNextScreen = async (profile, subStatus) => {
+    if (!profile.name || !profile.email) {
+      return 'Register';
+    }
+    if (!profile.emailVerified) {
+      return 'VerifyEmail';
+    }
+
+    try {
+      const summary = await api.getHealthProfileSummary();
+      setHpSummary(summary);
+      if (!summary || summary.onboardingCompleted !== true) {
+        return 'HealthProfileOnboarding';
+      }
+    } catch (e) {
+      console.log('Error checking health profile summary:', e);
+      return 'HealthProfileOnboarding';
+    }
+
+    if (!subStatus || subStatus.status !== 'ACTIVE') {
+      return 'SubscriptionPlans';
+    }
+
+    return 'Home';
+  };
 
   // Check existing session on app startup
   useEffect(() => {
@@ -34,13 +63,8 @@ export default function App() {
           const subStatus = await api.getSubscriptionStatus();
           setSubscription(subStatus);
 
-          if (!profile.name || !profile.email) {
-            setCurrentScreen('Register');
-          } else if (!subStatus || subStatus.status !== 'ACTIVE') {
-            setCurrentScreen('SubscriptionPlans');
-          } else {
-            setCurrentScreen('Home');
-          }
+          const nextScreen = await determineNextScreen(profile, subStatus);
+          setCurrentScreen(nextScreen);
         } else {
           setCurrentScreen('PhoneInput');
         }
@@ -60,24 +84,30 @@ export default function App() {
   };
 
   // Called after OTP is verified successfully
-  const handleVerificationSuccess = ({ profile, subscription: subStatus }) => {
+  const handleVerificationSuccess = async ({ profile, subscription: subStatus }) => {
     setUser(profile);
     setSubscription(subStatus);
-
-    if (!profile.name || !profile.email) {
-      setCurrentScreen('Register');
-    } else if (!subStatus || subStatus.status !== 'ACTIVE') {
-      setCurrentScreen('SubscriptionPlans');
-    } else {
-      setCurrentScreen('Home');
-    }
+    const nextScreen = await determineNextScreen(profile, subStatus);
+    setCurrentScreen(nextScreen);
   };
 
   // Called after profile setup (Name & Email) is saved
   const handleRegisterSuccess = (updatedProfile) => {
-    setUser(updatedProfile);
+    const unverifiedProfile = { ...updatedProfile, emailVerified: false };
+    setUser(unverifiedProfile);
+    setCurrentScreen('VerifyEmail');
+  };
 
-    // If no active subscription, force routing to Subscription Plans screen
+  // Called after user completes/confirms email verification
+  const handleEmailVerificationConfirmed = async (confirmedProfile) => {
+    setUser(confirmedProfile);
+    const nextScreen = await determineNextScreen(confirmedProfile, subscription);
+    setCurrentScreen(nextScreen);
+  };
+
+  // Called after health profile onboarding is completed
+  const handleHealthProfileSuccess = () => {
+    setHpSummary({ onboardingCompleted: true, profileCompletionPercentage: 100 });
     if (!subscription || subscription.status !== 'ACTIVE') {
       setCurrentScreen('SubscriptionPlans');
     } else {
@@ -96,6 +126,7 @@ export default function App() {
     await api.logout();
     setUser(null);
     setSubscription(null);
+    setHpSummary(null);
     setPhoneNumber('');
     setCurrentScreen('PhoneInput');
   };
@@ -109,9 +140,13 @@ export default function App() {
     );
   }
 
-  // Security guard: Ensure Home screen cannot be accessed without active subscription
-  if (currentScreen === 'Home' && (!subscription || subscription.status !== 'ACTIVE')) {
-    setCurrentScreen('SubscriptionPlans');
+  // Security guard: Ensure Home screen cannot be accessed without completed Health Profile & active subscription
+  if (currentScreen === 'Home') {
+    if (hpSummary && hpSummary.onboardingCompleted !== true) {
+      setCurrentScreen('HealthProfileOnboarding');
+    } else if (!subscription || subscription.status !== 'ACTIVE') {
+      setCurrentScreen('SubscriptionPlans');
+    }
   }
 
   return (
@@ -132,6 +167,19 @@ export default function App() {
           phoneNumber={phoneNumber}
           onBack={() => setCurrentScreen('OtpVerify')}
           onRegisterSuccess={handleRegisterSuccess}
+        />
+      )}
+      {currentScreen === 'VerifyEmail' && (
+        <VerifyEmailScreen
+          user={user}
+          onVerificationConfirmed={handleEmailVerificationConfirmed}
+          onSignOut={handleSignOut}
+        />
+      )}
+      {currentScreen === 'HealthProfileOnboarding' && (
+        <HealthProfileOnboardingScreen
+          onComplete={handleHealthProfileSuccess}
+          onSignOut={handleSignOut}
         />
       )}
       {currentScreen === 'SubscriptionPlans' && (

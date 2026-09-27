@@ -9,6 +9,7 @@ import lombok.Setter;
 import java.util.UUID;
 
 @Getter
+@Setter
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserProfileResponse {
@@ -16,5 +17,5 @@ public class UserProfileResponse {
     private String phone;
     private String name;
     private String email;
-
+    private boolean emailVerified;
 }
