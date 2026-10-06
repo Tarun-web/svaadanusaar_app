@@ -105,5 +105,12 @@ public class HealthProfile extends BaseEntity {
     )
     private SupplementProfile supplementProfile;
 
+    @OneToOne(
+            mappedBy = "healthProfile",
+            cascade  = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private CurrentNutritionProfile currentNutritionProfile;
+
 
 }

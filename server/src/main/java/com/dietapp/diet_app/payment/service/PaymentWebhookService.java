@@ -393,7 +393,10 @@ public class PaymentWebhookService {
     }
 
     // handle failed payment
-    private void handlePaymentFailed(String payload, String eventId) {
+    private void handlePaymentFailed(
+            String payload,
+            String eventId
+    ) {
 
         JSONObject webhook = new JSONObject(payload);
 
@@ -405,8 +408,10 @@ public class PaymentWebhookService {
         String razorpayPaymentId =
                 paymentEntity.getString("id");
 
-        // Avoid duplicate payment records
-        if (paymentRepository.findByPaymentId(razorpayPaymentId).isPresent()) {
+        // Idempotency
+        if (paymentRepository
+                .findByPaymentId(razorpayPaymentId)
+                .isPresent()) {
             return;
         }
 
@@ -416,6 +421,14 @@ public class PaymentWebhookService {
 
         payment.setProvider("RAZORPAY");
         payment.setPaymentId(razorpayPaymentId);
+
+        if (paymentEntity.has("order_id")
+                && !paymentEntity.isNull("order_id")) {
+
+            payment.setOrderId(
+                    paymentEntity.getString("order_id")
+            );
+        }
 
         payment.setAmount(
                 paymentEntity.getInt("amount") / 100
@@ -431,15 +444,6 @@ public class PaymentWebhookService {
 
         payment.setCreatedAt(now);
         payment.setUpdatedAt(now);
-
-        /*
-         * payment.failed does NOT reliably contain
-         * razorpay_subscription_id.
-         *
-         * We therefore create the FAILED payment first.
-         * subscription.pending will associate it with
-         * the local subscription.
-         */
 
         paymentRepository.save(payment);
     }
