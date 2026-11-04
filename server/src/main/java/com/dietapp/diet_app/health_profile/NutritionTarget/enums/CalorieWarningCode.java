@@ -1,4 +1,5 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.enums;
+
 public enum CalorieWarningCode {
 
     MEDICAL_CONDITION_PRESENT,
@@ -15,5 +16,14 @@ public enum CalorieWarningCode {
 
     MISSING_GENDER,
 
-    CLINICAL_REVIEW_REQUIRED
+    CLINICAL_REVIEW_REQUIRED,
+
+    /**
+     * General advisory notice from a downstream macro/hydration calculator
+     * (protein, fat, carbohydrate, or water layer).
+     *
+     * <p>Used when wrapping non-calorie-layer warnings into the unified
+     * {@code NutritionTargetResponse.warnings} list.</p>
+     */
+    GENERAL_ADVISORY
 }

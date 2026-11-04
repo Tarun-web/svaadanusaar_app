@@ -1,5 +1,6 @@
 package com.dietapp.diet_app.health_profile.dto.response;
 
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.TrainingStatus;
 import lombok.*;
 
 import java.time.DayOfWeek;
@@ -27,6 +28,9 @@ public class WorkoutProfileResponse {
     private Boolean includePostWorkoutMeal;
 
     private DayOfWeek preferredRestDay;
+
+    /** The user's resistance-training experience level. {@code null} when not yet provided. */
+    private TrainingStatus trainingStatus;
 
     private LocalDateTime createdAt;
 

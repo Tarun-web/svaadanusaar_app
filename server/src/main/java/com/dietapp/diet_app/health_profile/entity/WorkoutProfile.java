@@ -1,6 +1,7 @@
 package com.dietapp.diet_app.health_profile.entity;
 
 import com.dietapp.diet_app.common.entity.BaseEntity;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.TrainingStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -81,6 +82,17 @@ public class WorkoutProfile extends BaseEntity {
     @Builder.Default
     @Column(nullable = false)
     private Boolean includePostWorkoutMeal = true;
+
+    /**
+     * The user's resistance-training experience level.
+     *
+     * <p>Nullable — existing records and new profiles where the user has
+     * not yet provided this information will store {@code NULL}.
+     * Never assigned a default value by the application.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "training_status")
+    private TrainingStatus trainingStatus;
 
 
     // ============================================================

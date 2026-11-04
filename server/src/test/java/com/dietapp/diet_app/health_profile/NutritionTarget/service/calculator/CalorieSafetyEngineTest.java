@@ -91,7 +91,7 @@ class CalorieSafetyEngineTest {
                         .stream()
                         .anyMatch(
                                 warning ->
-                                        warning
+                                        warning.message()
                                                 .toLowerCase()
                                                 .contains("below")
                         )
@@ -134,7 +134,7 @@ class CalorieSafetyEngineTest {
                         .stream()
                         .anyMatch(
                                 warning ->
-                                        warning
+                                        warning.message()
                                                 .toLowerCase()
                                                 .contains("fatty liver")
                         )

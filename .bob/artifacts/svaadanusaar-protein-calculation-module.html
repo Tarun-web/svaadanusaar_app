@@ -1,0 +1,405 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Svaadanusaar — Protein Calculation Module</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    color: #1f2328;
+    background: #ffffff;
+    padding: 32px 16px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: #1f2328; }
+  .subtitle { color: #57606a; margin-bottom: 32px; font-size: 13px; }
+  h2 { font-size: 15px; font-weight: 700; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; color: #1f2328; }
+  h3 { font-size: 13px; font-weight: 600; margin: 16px 0 6px; color: #3b82d4; }
+  p { margin-bottom: 10px; }
+  ul, ol { margin: 6px 0 10px 20px; }
+  li { margin-bottom: 3px; }
+  code {
+    font-family: "Cascadia Code", "Fira Mono", monospace;
+    font-size: 12px;
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 12px;
+    font-family: "Cascadia Code", "Fira Mono", monospace;
+    line-height: 1.55;
+    margin-bottom: 12px;
+  }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+  th { background: #f7f8fa; border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-weight: 600; }
+  td { border: 1px solid #e5e7eb; padding: 6px 10px; vertical-align: top; }
+  td code { background: none; border: none; padding: 0; font-size: 12px; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-right: 4px;
+  }
+  .badge-new  { background: #d1fae5; color: #065f46; }
+  .badge-mod  { background: #dbeafe; color: #1e40af; }
+  .badge-reuse{ background: #f7f8fa; color: #57606a; border: 1px solid #e5e7eb; }
+  .callout {
+    background: #f0f9ff;
+    border-left: 4px solid #3b82d4;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+  }
+  .warn {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+  }
+  .flow {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 12px 16px;
+    font-family: "Cascadia Code", "Fira Mono", monospace;
+    font-size: 12px;
+    line-height: 2;
+    margin-bottom: 14px;
+  }
+  footer {
+    margin-top: 48px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+    text-align: center;
+    color: #57606a;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Svaadanusaar — Protein Calculation Module</h1>
+  <div class="subtitle">Architecture, file index, business rules, and integration guide — generated after implementation</div>
+
+  
+  <h2>1. Overview</h2>
+
+  <p>The protein module implements a two-stage pipeline:</p>
+  <ol>
+    <li><strong>ProteinCalculator</strong> — pure calculation, returns the user's <em>long-term</em> physiological protein target based on goal, body weight (or LBM), and medical safety.</li>
+    <li><strong>ProteinAdaptationService</strong> — adaptation logic, determines the <em>current</em> recommended target, manages ramp-up, and gates progression on GI tolerance.</li>
+  </ol>
+
+  <div class="flow">HealthProfile<br />
+       ↓<br />
+    ProteinCalculator   →  ProteinTargetResult  (long-term target)<br />
+       ↓<br />
+    ProteinAdaptationService  →  ProteinAdaptationResult  (current target)<br />
+       ↓<br />
+    MacroCalculator  →  NutritionTarget.proteinGrams  =  currentTargetGrams<br />
+       ↓<br />
+    Meal/Diet Generator  →  Actual foods  →  Protein quality/digestibility<br />
+  </div>
+
+  <div class="callout">
+    <strong>Key distinction:</strong><br />
+    <code>NutritionTarget.proteinGrams</code> always stores the <strong>current adaptation target</strong>, not the long-term goal.<br />
+    The long-term target lives in <code>ProteinAdaptationProfile.longTermTargetGrams</code>.
+  </div>
+
+  
+  <h2>2. New Files Created</h2>
+
+  <table>
+    <tr><th>File</th><th>Package</th><th>Purpose</th></tr>
+    <tr>
+      <td><code>ProteinCalculationInput.java</code> <span class="badge badge-mod">modified</span></td>
+      <td><code>…service.calculator</code></td>
+      <td>Input record. Added: <code>resistanceTraining</code>, <code>workoutIntensity</code>, <code>medicalConditions</code>. <code>currentProteinGrams</code> kept nullable.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinCalculator.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…service.calculator</code></td>
+      <td>Pure stateless calculator. Computes long-term protein target. No DB access, no adaptation state.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinTargetResult.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…dto.response</code></td>
+      <td>Output of <code>ProteinCalculator</code>. Contains <code>longTermTargetGrams</code>, <code>calculationBasis</code>, <code>weightUsedKg</code>, <code>proteinPerKg</code>, <code>safetyStatus</code>, <code>warnings</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinAdaptationResult.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…dto.response</code></td>
+      <td>Output of <code>ProteinAdaptationService</code>. Contains current target, long-term target, stage, tolerance, warnings, <code>nextEligibleIncreaseDate</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinWarning.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…dto.response</code></td>
+      <td>Structured warning record. Mirrors <code>CalorieWarning</code>. Uses <code>ProteinWarningCode</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinAdaptationStage.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.enums</code></td>
+      <td>Enum: <code>NOT_STARTED</code>, <code>STARTING</code>, <code>ADAPTING</code>, <code>TARGET_REACHED</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinToleranceStatus.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.enums</code></td>
+      <td>Enum: <code>UNKNOWN</code>, <code>GOOD</code>, <code>MILD_ISSUES</code>, <code>SIGNIFICANT_ISSUES</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinWarningCode.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.enums</code></td>
+      <td>Machine-readable protein warning codes. Parallel to <code>CalorieWarningCode</code>.</td>
+    </tr>
+    <tr>
+      <td><code>TrainingStatus.java</code> <span class="badge badge-mod">modified</span></td>
+      <td><code>…NutritionTarget.enums</code></td>
+      <td>Was empty. Now: <code>BEGINNER</code>, <code>INTERMEDIATE</code>, <code>ADVANCED</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinAdaptationProfile.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.entity</code></td>
+      <td>JPA entity. Stores ongoing adaptation state. 1:1 with <code>HealthProfile</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinAdaptationProfileRepository.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.repository</code></td>
+      <td>JPA repository. Methods: <code>findByHealthProfile()</code>, <code>findByHealthProfileId()</code>.</td>
+    </tr>
+    <tr>
+      <td><code>V31__create_protein_adaptation_profiles.sql</code> <span class="badge badge-new">new</span></td>
+      <td><code>resources/db/migration</code></td>
+      <td>Flyway migration. Creates <code>protein_adaptation_profiles</code> table with FK, unique constraint, and CHECK constraints.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinAdaptationService.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>…NutritionTarget.service</code></td>
+      <td>Spring <code>@Service</code>. Manages ramp-up, tolerance gating, persistence. Methods: <code>initialise()</code>, <code>evaluate()</code>, <code>recordTolerance()</code>, <code>incrementDaysAtCurrentTarget()</code>, <code>toResult()</code>.</td>
+    </tr>
+    <tr>
+      <td><code>MacroCalculator.java</code> <span class="badge badge-mod">modified</span></td>
+      <td><code>…service.calculator</code></td>
+      <td>Was empty skeleton. Now orchestrates protein via <code>ProteinCalculator</code> + <code>ProteinAdaptationService</code>. Methods: <code>calculateProtein()</code>, <code>resolveNutritionTargetProtein()</code>.</td>
+    </tr>
+    <tr>
+      <td><code>ProteinCalculatorTest.java</code> <span class="badge badge-new">new</span></td>
+      <td><code>test/…service.calculator</code></td>
+      <td>30 unit tests. All pass. Covers all scenarios specified in requirements.</td>
+    </tr>
+  </table>
+
+  
+  <h2>3. Reused Existing Types (Nothing Duplicated)</h2>
+
+  <table>
+    <tr><th>Type</th><th>Reused from</th><th>How used</th></tr>
+    <tr><td><code>Goal</code></td><td><code>health_profile.enums</code></td><td>Controls protein-per-kg multiplier selection</td></tr>
+    <tr><td><code>WorkoutIntensity</code></td><td><code>health_profile.enums</code></td><td>Input context for SPORTS_PERFORMANCE</td></tr>
+    <tr><td><code>SportType</code></td><td><code>health_profile.enums</code></td><td>Available in input; used by caller to populate <code>workoutIntensity</code></td></tr>
+    <tr><td><code>ActivityType</code></td><td><code>health_profile.enums</code></td><td>Caller uses GYM activity to set <code>resistanceTraining=true</code></td></tr>
+    <tr><td><code>ExperienceLevel</code></td><td><code>health_profile.enums</code></td><td>Caller maps to <code>TrainingStatus</code></td></tr>
+    <tr><td><code>MedicalCondition</code></td><td><code>health_profile.enums</code></td><td>Checked for KIDNEY_DISEASE, LIVER_DISEASE, CELIAC, HYPERTHYROID</td></tr>
+    <tr><td><code>CalorieSafetyStatus</code></td><td><code>NutritionTarget.enums</code></td><td>Safety status in <code>ProteinTargetResult</code></td></tr>
+    <tr><td><code>BaseEntity</code></td><td><code>common.entity</code></td><td><code>ProteinAdaptationProfile</code> extends it</td></tr>
+    <tr><td><code>HealthProfile</code></td><td><code>health_profile.entity</code></td><td>Parent of <code>ProteinAdaptationProfile</code></td></tr>
+    <tr><td><code>PersonalProfile.weightKg</code></td><td><code>health_profile.entity</code></td><td>Source of weight for <code>ProteinCalculationInput</code></td></tr>
+    <tr><td><code>ActivityProfile</code></td><td><code>health_profile.entity</code></td><td>Source of <code>resistanceTraining</code>, <code>workoutIntensity</code>, <code>daysPerWeek</code></td></tr>
+  </table>
+
+  
+  <h2>4. Protein-per-kg Multipliers (Centralised Constants)</h2>
+
+  <table>
+    <tr><th>Goal</th><th>No Resistance Training</th><th>With Resistance Training</th></tr>
+    <tr><td>GENERAL_HEALTH / MAINTENANCE</td><td>1.2 g/kg</td><td>1.2 g/kg</td></tr>
+    <tr><td>FAT_LOSS</td><td>1.6 g/kg</td><td>1.8 g/kg</td></tr>
+    <tr><td>MUSCLE_GAIN</td><td colspan="2" style="text-align:center">1.8 g/kg</td></tr>
+    <tr><td>BODY_RECOMPOSITION</td><td colspan="2" style="text-align:center">2.0 g/kg</td></tr>
+    <tr><td>WEIGHT_GAIN</td><td>1.4 g/kg</td><td>1.8 g/kg</td></tr>
+    <tr><td>SPORTS_PERFORMANCE</td><td colspan="2" style="text-align:center">1.8 g/kg</td></tr>
+  </table>
+
+  <p>All constants are <code>static final</code> fields in <code>ProteinCalculator</code>. To change any multiplier, edit only one line.</p>
+
+  
+  <h2>5. LBM vs Body Weight</h2>
+
+  <ul>
+    <li>If <code>bodyFatPercentage</code> is provided and within <strong>0–60%</strong>, LBM is used: <code>LBM = weight × (1 − bodyFat%)</code></li>
+    <li>If absent or out of range, total body weight is used and a <code>BODY_FAT_INVALID_IGNORED</code> warning is emitted.</li>
+    <li><code>ProteinTargetResult.calculationBasis</code> explicitly records <code>"LBM"</code> or <code>"BODY_WEIGHT"</code>.</li>
+  </ul>
+
+  
+  <h2>6. Bioavailability Guarantee</h2>
+
+  <div class="warn">
+    <strong>No bioavailability factor is applied in ProteinCalculator.</strong><br />
+    The calculated target is the dietary protein requirement in grams.<br />
+    Protein quality and digestibility are evaluated downstream at the food/recipe selection layer.<br />
+    A bioavailability factor greater than 100% is architecturally impossible in this module.
+  </div>
+
+  
+  <h2>7. Adaptation Rules (Centralised in ProteinAdaptationService)</h2>
+
+  <h3>Starting Target Formula</h3>
+  <pre>gap = longTermTarget − currentProtein
+
+gap ≤ 15 g           → starting = longTerm         (no reduction)
+15 &lt; gap ≤ 30 g   → starting = longTerm − 10 g
+30 &lt; gap ≤ 50 g   → starting = longTerm − 20 g
+gap &gt; 50 g           → starting = longTerm − 25 g
+
+starting target ≥ current intake (floor rule)</pre>
+
+  <p>If <code>currentProteinGrams == null</code> (unknown), the starting target equals the long-term target and stage is <code>NOT_STARTED</code>.</p>
+
+  <h3>Progression Gate (all must be true)</h3>
+  <ol>
+    <li>Tolerance status == <code>GOOD</code> or <code>UNKNOWN</code></li>
+    <li>Days at current target ≥ 7 (configurable via <code>MIN_DAYS_BEFORE_INCREMENT</code>)</li>
+    <li>Current target &lt; long-term target</li>
+  </ol>
+
+  <h3>Tolerance Handling</h3>
+  <table>
+    <tr><th>Tolerance Status</th><th>Action</th></tr>
+    <tr><td><code>GOOD</code> / <code>UNKNOWN</code></td><td>Allow progression after minimum period</td></tr>
+    <tr><td><code>MILD_ISSUES</code></td><td>Hold target. Emit <code>TOLERANCE_HOLD</code> warning.</td></tr>
+    <tr><td><code>SIGNIFICANT_ISSUES</code></td><td>Hold target. Emit <code>SIGNIFICANT_GI_SYMPTOMS</code> warning. Advise medical review.</td></tr>
+  </table>
+
+  
+  <h2>8. Medical Safety</h2>
+
+  <table>
+    <tr><th>Condition</th><th>Clinical Review?</th><th>Warning Emitted</th></tr>
+    <tr><td><code>KIDNEY_DISEASE</code></td><td>Yes</td><td><code>CLINICAL_REVIEW_REQUIRED</code> + <code>KIDNEY_DISEASE_DETECTED</code></td></tr>
+    <tr><td><code>LIVER_DISEASE</code></td><td>Yes</td><td><code>CLINICAL_REVIEW_REQUIRED</code> + <code>LIVER_DISEASE_DETECTED</code></td></tr>
+    <tr><td><code>CELIAC</code></td><td>No — protein quantity not restricted</td><td><code>CELIAC_DISEASE_DETECTED</code> (source guidance)</td></tr>
+    <tr><td><code>HYPERTHYROID</code></td><td>No</td><td><code>HYPERTHYROID_DETECTED</code></td></tr>
+    <tr><td>Other conditions</td><td>No</td><td>None (no protein-specific guidance invented)</td></tr>
+  </table>
+
+  
+  <h2>9. Database Schema — protein_adaptation_profiles</h2>
+
+  <pre>Column                   Type           Nullable  Notes
+──────────────────────────────────────────────────────────────────────
+id                       UUID           NOT NULL  PK, gen_random_uuid()
+created_at               TIMESTAMP      NOT NULL
+updated_at               TIMESTAMP      NOT NULL
+version                  BIGINT         NOT NULL  Optimistic lock
+health_profile_id        UUID           NOT NULL  FK → health_profiles, UNIQUE
+current_protein_grams    NUMERIC(8,2)   nullable  null = intake unknown
+long_term_target_grams   NUMERIC(8,2)   NOT NULL  CHECK &gt; 0
+current_target_grams     NUMERIC(8,2)   NOT NULL  CHECK &gt; 0
+adaptation_stage         VARCHAR(32)    NOT NULL  ProteinAdaptationStage enum
+days_at_current_target   INT            NOT NULL  DEFAULT 0, CHECK &gt;= 0
+tolerance_status         VARCHAR(32)    NOT NULL  ProteinToleranceStatus enum
+last_target_change_at    DATE           nullable</pre>
+
+  
+  <h2>10. Integration Guide — How to Use</h2>
+
+  <h3>Initialising protein for a new user</h3>
+  <pre>// Build input from HealthProfile
+ProteinCalculationInput input = new ProteinCalculationInput(
+    personalProfile.getWeightKg(),
+    null,                          // bodyFat — populate if available
+    fitnessGoalProfile.getPrimaryGoal(),
+    hasResistanceTraining(activities),
+    resolveWorkoutIntensity(activities),
+    resolveTrainingStatus(activities),
+    currentNutritionProfile != null
+        ? currentNutritionProfile.getCurrentProteinGrams()
+        : null,                    // may be null — never invent it
+    medicalProfile != null
+        ? medicalProfile.getMedicalConditions()
+        : null
+);
+
+// Calculate
+ProteinAdaptationResult result = macroCalculator.calculateProtein(
+    healthProfile, input, null);   // null = first time
+
+// Write to NutritionTarget
+nutritionTarget.setProteinGrams(
+    macroCalculator.resolveNutritionTargetProtein(result));</pre>
+
+  <h3>Daily progression check (scheduled job)</h3>
+  <pre>ProteinAdaptationProfile profile = repository
+    .findByHealthProfile(healthProfile).orElseThrow();
+
+proteinAdaptationService.incrementDaysAtCurrentTarget(profile);
+ProteinAdaptationResult result = proteinAdaptationService.evaluate(profile);
+
+// Update NutritionTarget if target changed
+if (targetChanged(result)) {
+    nutritionTarget.setProteinGrams(result.currentTargetGrams());
+    nutritionTargetRepository.save(nutritionTarget);
+}</pre>
+
+  <h3>Recording GI tolerance</h3>
+  <pre>proteinAdaptationService.recordTolerance(
+    profile, ProteinToleranceStatus.MILD_ISSUES);</pre>
+
+  
+  <h2>11. Unit Test Coverage (30 tests, all passing)</h2>
+
+  <table>
+    <tr><th>#</th><th>Scenario</th><th>Class</th></tr>
+    <tr><td>1–9</td><td>All 7 goals × resistance training combinations → correct multiplier</td><td>ProteinCalculator</td></tr>
+    <tr><td>10</td><td>Missing current protein → no exception, valid result</td><td>ProteinCalculator</td></tr>
+    <tr><td>11</td><td>Current protein already above target → still calculates correctly</td><td>ProteinCalculator</td></tr>
+    <tr><td>12–14</td><td>Small / medium / large gap → correct starting target</td><td>ProteinAdaptationService</td></tr>
+    <tr><td>15–16</td><td>Valid BF% → LBM used; missing BF% → body weight used</td><td>ProteinCalculator</td></tr>
+    <tr><td>17</td><td>Invalid BF% (75%) → ignored, BODY_FAT_INVALID_IGNORED warning</td><td>ProteinCalculator</td></tr>
+    <tr><td>18–19</td><td>Zero weight → throws; null goal → throws</td><td>ProteinCalculator</td></tr>
+    <tr><td>20</td><td>Good tolerance + elapsed days → progression (+10 g)</td><td>ProteinAdaptationService</td></tr>
+    <tr><td>21</td><td>MILD_ISSUES → target held, TOLERANCE_HOLD warning</td><td>ProteinAdaptationService</td></tr>
+    <tr><td>22</td><td>SIGNIFICANT_ISSUES → target held, SIGNIFICANT_GI_SYMPTOMS warning</td><td>ProteinAdaptationService</td></tr>
+    <tr><td>23</td><td>TARGET_REACHED → no ramp-up, TARGET_ALREADY_REACHED warning</td><td>ProteinAdaptationService</td></tr>
+    <tr><td>24</td><td>KIDNEY_DISEASE → clinical review, KIDNEY_DISEASE_DETECTED warning</td><td>ProteinCalculator</td></tr>
+    <tr><td>25</td><td>LIVER_DISEASE → clinical review, LIVER_DISEASE_DETECTED warning</td><td>ProteinCalculator</td></tr>
+    <tr><td>26</td><td>CELIAC → no clinical review, source-selection warning only</td><td>ProteinCalculator</td></tr>
+    <tr><td>27</td><td>HYPERTHYROID → HYPERTHYROID_DETECTED warning, no clinical review</td><td>ProteinCalculator</td></tr>
+    <tr><td>28</td><td>No bioavailability factor &gt; 100% (target never inflated beyond weight×multiplier)</td><td>ProteinCalculator</td></tr>
+    <tr><td>29</td><td>Protein target never negative</td><td>ProteinCalculator</td></tr>
+    <tr><td>30</td><td>Adaptation target never exceeds long-term target</td><td>ProteinAdaptationService</td></tr>
+  </table>
+
+  
+  <h2>12. What Was NOT Changed</h2>
+  <ul>
+    <li>BMR calculator, TDEE calculator, GoalCalorieCalculator — untouched</li>
+    <li>CalorieSafetyEngine — untouched</li>
+    <li>NutritionTarget entity — no new columns added</li>
+    <li>Goal enum — reused as-is</li>
+    <li>WorkoutIntensity / SportType / MedicalCondition enums — reused as-is</li>
+    <li>Existing Flyway migrations V1–V30 — untouched</li>
+    <li>HealthProfile and all sub-profiles — untouched</li>
+  </ul>
+
+  <footer>Made with IBM Bob</footer>
+</div>
+</body>
+</html>
