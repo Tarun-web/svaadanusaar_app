@@ -11,8 +11,13 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Calculates the user's long-term physiological protein target.
@@ -102,6 +107,20 @@ public class ProteinCalculator {
      * Ensures no negative or near-zero value escapes.
      */
     static final BigDecimal MIN_PROTEIN_GRAMS = new BigDecimal("30");
+
+    /**
+     * Every {@link MedicalCondition} for which
+     * {@link #requiresClinicalReview(MedicalCondition)} is {@code true}.
+     *
+     * <p>Derived from that method so database queries and in-memory checks
+     * always share one rule.</p>
+     */
+    public static final Set<MedicalCondition> CLINICAL_REVIEW_CONDITIONS =
+            Collections.unmodifiableSet(
+                    Arrays.stream(MedicalCondition.values())
+                            .filter(ProteinCalculator::requiresClinicalReview)
+                            .collect(Collectors.toCollection(
+                                    () -> EnumSet.noneOf(MedicalCondition.class))));
 
     // ================================================================
     // calculate()
@@ -271,11 +290,23 @@ public class ProteinCalculator {
      * <p>The list is intentionally conservative. When in doubt, flag
      * for clinical review rather than silently prescribing a target.</p>
      */
-    private boolean requiresClinicalReview(MedicalCondition condition) {
+    public static boolean requiresClinicalReview(MedicalCondition condition) {
         return switch (condition) {
             case KIDNEY_DISEASE, LIVER_DISEASE -> true;
             default -> false;
         };
+    }
+
+    /**
+     * Returns {@code true} when any of the given conditions requires
+     * clinical review. {@code null} or empty means no known conditions.
+     */
+    public static boolean anyRequireClinicalReview(
+            Collection<MedicalCondition> conditions) {
+
+        return conditions != null
+                && conditions.stream()
+                        .anyMatch(ProteinCalculator::requiresClinicalReview);
     }
 
     /**

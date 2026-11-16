@@ -6,6 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Currently unused: targets are calculated on demand and not persisted. See
+ * {@link NutritionTarget} for the decision and the schema implications.
+ */
 public interface NutritionTargetRepository
         extends JpaRepository<NutritionTarget, UUID> {
 

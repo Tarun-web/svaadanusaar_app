@@ -8,6 +8,26 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+
+/**
+ * Snapshot row for a user's calculated nutrition targets.
+ *
+ * <p><strong>Design decision (Nutrition Engine v1): targets are calculated on
+ * demand and are NOT persisted.</strong> {@code GET /api/v1/nutrition-targets}
+ * recomputes everything from the current profile on every call; the only
+ * persisted nutrition state is {@code ProteinAdaptationProfile}. Nothing in
+ * production code writes or reads this entity: {@code NutritionTargetRepository}
+ * and {@code NutritionTargetMapper} have no callers.</p>
+ *
+ * <p>The class is kept (not deleted) pending a product decision on historical
+ * targets. Schema implications while it stays: no Flyway migration creates
+ * {@code nutrition_targets} (V19-V24 only alter it), several columns here are
+ * {@code nullable=false} while the migrations leave them nullable, and the
+ * unique {@code health_profile_id} allows only ONE row per user, i.e. a latest
+ * snapshot, not a history. A history feature would need a baseline migration,
+ * a write path on calculation, a one-to-many model and a read endpoint.</p>
+ */
+
 @Entity
 @Table(
         name = "nutrition_targets",

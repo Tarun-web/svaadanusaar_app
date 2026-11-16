@@ -16,10 +16,15 @@ import java.util.List;
  *
  * <h3>Key distinction</h3>
  * <pre>
- *   currentProteinIntakeGrams  = what the user currently eats
- *   currentTargetGrams         = what Svaadanusaar currently recommends
- *   longTermTargetGrams        = the eventual calculated physiological target
+ *   adaptationBaselineProteinGrams = intake captured when the adaptation was
+ *                                    initialised (historical baseline)
+ *   currentTargetGrams             = what Svaadanusaar currently recommends
+ *   longTermTargetGrams            = the eventual calculated physiological target
  * </pre>
+ *
+ * <p>This is <strong>not</strong> the user's latest reported intake. That
+ * lives in {@code HealthProfile.currentNutritionProfile.currentProteinGrams}
+ * and is exposed separately on {@code NutritionTargetResponse}.</p>
  */
 public record ProteinAdaptationResult(
 
@@ -38,10 +43,13 @@ public record ProteinAdaptationResult(
         BigDecimal longTermTargetGrams,
 
         /**
-         * The user's known current protein intake, if available.
-         * {@code null} when intake is unknown.
+         * The stored adaptation baseline
+         * ({@code ProteinAdaptationProfile.currentProteinGrams}): the intake
+         * recorded when adaptation was initialised. {@code null} when no
+         * baseline was captured. It is never updated by later changes to the
+         * user's reported intake.
          */
-        BigDecimal currentProteinIntakeGrams,
+        BigDecimal adaptationBaselineProteinGrams,
 
         /**
          * The current phase of the adaptation journey.
@@ -66,9 +74,36 @@ public record ProteinAdaptationResult(
         ProteinToleranceStatus toleranceStatus,
 
         /**
-         * Warnings generated during adaptation evaluation.
+         * Warnings generated during adaptation evaluation, combined with
+         * the warnings produced by {@code ProteinCalculator} for the
+         * long-term target.
          */
-        List<ProteinWarning> warnings
+        List<ProteinWarning> warnings,
+
+        /**
+         * Whether clinical review is required before the protein target is
+         * used. Propagated from {@link ProteinTargetResult#requiresClinicalReview()}.
+         */
+        boolean requiresClinicalReview
 
 ) {
+
+    /**
+     * Convenience constructor for results that carry no clinical-review
+     * requirement ({@code requiresClinicalReview = false}).
+     */
+    public ProteinAdaptationResult(
+            BigDecimal currentTargetGrams,
+            BigDecimal longTermTargetGrams,
+            BigDecimal adaptationBaselineProteinGrams,
+            ProteinAdaptationStage adaptationStage,
+            boolean rampUpRequired,
+            LocalDate nextEligibleIncreaseDate,
+            ProteinToleranceStatus toleranceStatus,
+            List<ProteinWarning> warnings) {
+
+        this(currentTargetGrams, longTermTargetGrams, adaptationBaselineProteinGrams,
+                adaptationStage, rampUpRequired, nextEligibleIncreaseDate,
+                toleranceStatus, warnings, false);
+    }
 }

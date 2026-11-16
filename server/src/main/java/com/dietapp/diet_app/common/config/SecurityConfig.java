@@ -14,6 +14,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.dietapp.diet_app.auth.filter.JwtFilter;
+import com.dietapp.diet_app.common.security.JsonAuthenticationEntryPoint;
 
 import java.util.List;
 
@@ -24,12 +25,16 @@ public class SecurityConfig {
     @Autowired
     private JwtFilter jwtFilter;
 
+    @Autowired
+    private JsonAuthenticationEntryPoint authenticationEntryPoint;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable) // Disable CSRF protection
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .formLogin(AbstractHttpConfigurer::disable) // Disable form login
                 .httpBasic(AbstractHttpConfigurer::disable) // Disable HTTP Basic authentication
+                .exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint)) // 401 JSON for unauthenticated requests
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**",

@@ -15,7 +15,9 @@ import java.time.LocalDate;
  *
  * <h3>Key distinction between fields</h3>
  * <pre>
- *   currentProteinGrams  — what the user currently eats
+ *   currentProteinGrams  — historical adaptation baseline: the intake captured
+ *                          at initialisation (NOT the latest reported intake,
+ *                          which lives in HealthProfile.currentNutritionProfile)
  *   currentTargetGrams   — what Svaadanusaar currently recommends
  *   longTermTargetGrams  — the eventual physiological target
  * </pre>
@@ -63,10 +65,13 @@ public class ProteinAdaptationProfile extends BaseEntity {
     private HealthProfile healthProfile;
 
     /**
-     * The user's current actual daily protein intake in grams.
+     * The adaptation baseline: the user's daily protein intake in grams as
+     * captured when adaptation was initialised.
      *
-     * <p>Nullable — {@code null} means intake is unknown.
-     * Must NOT be invented; it comes from user input or food-log analysis.</p>
+     * <p>Nullable — {@code null} means no baseline was captured.
+     * Must NOT be invented. It is not updated when the user later changes
+     * or clears their reported intake; the latest reported intake is
+     * {@code HealthProfile.currentNutritionProfile.currentProteinGrams}.</p>
      */
     @Column(
             name = "current_protein_grams",
@@ -152,4 +157,17 @@ public class ProteinAdaptationProfile extends BaseEntity {
             name = "last_target_change_at"
     )
     private LocalDate lastTargetChangeAt;
+
+    /**
+     * The calendar date on which the scheduled process last counted a day
+     * for this profile.
+     *
+     * <p>{@code null} means the scheduled process has never evaluated this
+     * profile. Used by {@code ProteinAdaptationService.evaluateScheduled}
+     * so a profile is counted at most once per day.</p>
+     */
+    @Column(
+            name = "last_evaluated_on"
+    )
+    private LocalDate lastEvaluatedOn;
 }

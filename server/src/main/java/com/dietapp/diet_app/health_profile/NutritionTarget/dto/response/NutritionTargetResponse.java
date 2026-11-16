@@ -37,6 +37,10 @@ import java.util.List;
  *   <li>{@link #rampUpRequired} — Whether a ramp-up schedule is active.</li>
  *   <li>{@link #nextEligibleProteinIncreaseDate} — Earliest date the protein
  *       target may be increased.</li>
+ *   <li>{@link #currentProteinIntakeGrams} — Latest user-reported intake.</li>
+ *   <li>{@link #adaptationBaselineProteinGrams} — Intake stored when the
+ *       adaptation was initialised.</li>
+ *   <li>{@link #adaptationBaselineOutOfDate} — Whether the two differ.</li>
  * </ul>
  */
 @Builder
@@ -110,6 +114,28 @@ public record NutritionTargetResponse(
          * prevents progression.</p>
          */
         LocalDate nextEligibleProteinIncreaseDate,
+
+        /**
+         * The user's latest reported protein intake in grams
+         * ({@code HealthProfile.currentNutritionProfile.currentProteinGrams}).
+         * {@code null} when unknown or explicitly cleared.
+         */
+        BigDecimal currentProteinIntakeGrams,
+
+        /**
+         * The intake stored on the adaptation profile when adaptation was
+         * initialised. It is a historical baseline and is not overwritten
+         * when the reported intake changes. {@code null} when none was captured.
+         */
+        BigDecimal adaptationBaselineProteinGrams,
+
+        /**
+         * {@code true} when exactly one of {@link #currentProteinIntakeGrams}
+         * and {@link #adaptationBaselineProteinGrams} is {@code null}, or both
+         * are non-null and differ. {@code false} when both are {@code null}
+         * or both are equal.
+         */
+        boolean adaptationBaselineOutOfDate,
 
         // ── Aggregated warnings ──────────────────────────────────────────
 

@@ -1,5 +1,7 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.service;
 
+import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ScheduledEvaluationResult;
+import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ScheduledEvaluationOutcome;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinAdaptationResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinTargetResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinWarning;
@@ -8,16 +10,24 @@ import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ProteinAdaptati
 import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ProteinToleranceStatus;
 import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ProteinWarningCode;
 import com.dietapp.diet_app.health_profile.NutritionTarget.repository.ProteinAdaptationProfileRepository;
+import com.dietapp.diet_app.health_profile.NutritionTarget.service.calculator.ProteinCalculator;
 import com.dietapp.diet_app.health_profile.entity.HealthProfile;
+import com.dietapp.diet_app.health_profile.enums.MedicalCondition;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Manages the ongoing protein adaptation journey for a user.
@@ -86,6 +96,9 @@ public class ProteinAdaptationService {
 
     // ================================================================
 
+    /** SQLState for a unique-constraint violation (standard, PostgreSQL included). */
+    private static final String UNIQUE_VIOLATION_SQLSTATE = "23505";
+
     private final ProteinAdaptationProfileRepository repository;
 
     // ================================================================
@@ -127,6 +140,18 @@ public class ProteinAdaptationService {
                 .orElse(ProteinAdaptationProfile.builder()
                         .healthProfile(healthProfile)
                         .build());
+        boolean firstInsert = profile.getId() == null;
+
+        // The caller only initialises when it saw no row (or a NOT_STARTED
+        // one). A row that is already past NOT_STARTED here was initialised by
+        // a concurrent request after the caller's read; resetting it would
+        // silently destroy that progress, so report a conflict instead.
+        if (!firstInsert
+                && profile.getAdaptationStage() != null
+                && profile.getAdaptationStage() != ProteinAdaptationStage.NOT_STARTED) {
+            throw new ObjectOptimisticLockingFailureException(
+                    ProteinAdaptationProfile.class, profile.getId());
+        }
 
         profile.setCurrentProteinGrams(currentProteinGrams);
         profile.setLongTermTargetGrams(longTermTarget);
@@ -136,7 +161,118 @@ public class ProteinAdaptationService {
         profile.setToleranceStatus(ProteinToleranceStatus.UNKNOWN);
         profile.setLastTargetChangeAt(LocalDate.now());
 
-        return repository.save(profile);
+        ProteinAdaptationProfile saved = repository.save(profile);
+        if (firstInsert) {
+            flushFirstInsert();
+        }
+        return saved;
+    }
+
+    /**
+     * Forces the INSERT of a brand-new profile now, inside this method,
+     * rather than at commit time where it would escape as a bare driver error.
+     *
+     * <p>If two first calculations for the same user race, both see no row and
+     * both insert; the loser violates the unique {@code health_profile_id}
+     * constraint. That loser did nothing wrong and must not receive a 500, and
+     * it must never overwrite the winner's row. A rolled-back transaction
+     * cannot be retried in place, so the loss is reported as a conflict
+     * (HTTP 409 via the existing optimistic-lock mapping); the client's retry
+     * then finds the winner's row. Only a unique violation (SQLState 23505) is
+     * translated; any other integrity failure propagates unchanged.</p>
+     */
+    private void flushFirstInsert() {
+        try {
+            repository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            if (isUniqueViolation(ex)) {
+                throw new ObjectOptimisticLockingFailureException(
+                        "Concurrent first-time protein adaptation initialisation", ex);
+            }
+            throw ex;
+        }
+    }
+
+    private static boolean isUniqueViolation(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof DuplicateKeyException) {
+                return true;
+            }
+            if (t instanceof SQLException sql && UNIQUE_VIOLATION_SQLSTATE.equals(sql.getSQLState())) {
+                return true;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    // ================================================================
+    // synchroniseLongTermTarget()
+    // ================================================================
+
+    /**
+     * Brings an existing profile's long-term target in line with a freshly
+     * calculated one, without resetting the user's adaptation progress.
+     *
+     * <p>Rules (applied only when the long-term target actually changed):</p>
+     * <ul>
+     *   <li>{@code NOT_STARTED} — no ramp is possible, so the current
+     *       target simply follows the new long-term target.</li>
+     *   <li>current &gt; new long-term — the current target is clamped to
+     *       the new long-term target and the stage becomes
+     *       {@code TARGET_REACHED}; the day counter restarts because the
+     *       target value changed.</li>
+     *   <li>current == new long-term — stage becomes {@code TARGET_REACHED}.</li>
+     *   <li>{@code TARGET_REACHED} and current &lt; new long-term — stage
+     *       becomes {@code ADAPTING} and the day counter restarts (it was
+     *       frozen while the target was reached).</li>
+     *   <li>otherwise ({@code STARTING}/{@code ADAPTING}, current &lt; new) —
+     *       only the long-term target changes.</li>
+     * </ul>
+     *
+     * <p>Tolerance status is never modified. Nothing is written when the
+     * long-term target is unchanged.</p>
+     *
+     * @param profile         the existing adaptation profile
+     * @param proteinTargetResult the freshly calculated long-term target
+     */
+    @Transactional
+    public void synchroniseLongTermTarget(
+            ProteinAdaptationProfile profile,
+            ProteinTargetResult proteinTargetResult) {
+
+        BigDecimal newLongTerm = proteinTargetResult.longTermTargetGrams();
+
+        if (profile.getLongTermTargetGrams().compareTo(newLongTerm) == 0) {
+            return;
+        }
+
+        BigDecimal current = profile.getCurrentTargetGrams();
+        ProteinAdaptationStage stage = profile.getAdaptationStage();
+
+        profile.setLongTermTargetGrams(newLongTerm);
+
+        if (stage == ProteinAdaptationStage.NOT_STARTED) {
+            profile.setCurrentTargetGrams(newLongTerm);
+
+        } else if (current.compareTo(newLongTerm) > 0) {
+            profile.setCurrentTargetGrams(newLongTerm);
+            profile.setAdaptationStage(ProteinAdaptationStage.TARGET_REACHED);
+            profile.setDaysAtCurrentTarget(0);
+            profile.setLastTargetChangeAt(LocalDate.now());
+
+        } else if (current.compareTo(newLongTerm) == 0) {
+            profile.setAdaptationStage(ProteinAdaptationStage.TARGET_REACHED);
+
+        } else if (stage == ProteinAdaptationStage.TARGET_REACHED) {
+            profile.setAdaptationStage(ProteinAdaptationStage.ADAPTING);
+            profile.setDaysAtCurrentTarget(0);
+            profile.setLastTargetChangeAt(LocalDate.now());
+        }
+
+        repository.save(profile);
     }
 
     // ================================================================
@@ -147,6 +283,31 @@ public class ProteinAdaptationService {
      * Evaluates the current adaptation state and — if progression is
      * permitted — advances the target by one increment.
      *
+     * <p>The user's <em>current</em> medical conditions are read from the
+     * profile's health profile, so a condition that was added or removed
+     * since the last call is honoured. A profile with no health profile
+     * attached is treated as having no conditions.</p>
+     *
+     * @param profile the existing adaptation profile to evaluate
+     * @return a result describing the current state and any next action
+     * @see #evaluate(ProteinAdaptationProfile, Collection)
+     */
+    @Transactional
+    public ProteinAdaptationResult evaluate(ProteinAdaptationProfile profile) {
+        return evaluate(profile, resolveMedicalConditions(profile));
+    }
+
+    /**
+     * Evaluates the current adaptation state using medical conditions the
+     * caller has already loaded (for example in one batch query).
+     *
+     * <p><strong>Clinical-review exclusion:</strong> when any condition
+     * requires clinical review under
+     * {@link ProteinCalculator#requiresClinicalReview} (currently kidney or
+     * liver disease), the profile is <em>not</em> progressed. No field is
+     * changed and nothing is saved; the result reports the existing state
+     * with {@code requiresClinicalReview = true}.</p>
+     *
      * <p>This method is the heart of the ramp-up logic.  It is typically
      * called daily by a scheduled job or whenever the user logs food/symptoms.</p>
      *
@@ -154,11 +315,20 @@ public class ProteinAdaptationService {
      * current recommended target (write to
      * {@code NutritionTarget.proteinGrams}) and any warnings.</p>
      *
-     * @param profile the existing adaptation profile to evaluate
+     * @param profile           the existing adaptation profile to evaluate
+     * @param medicalConditions the user's current conditions; {@code null}
+     *                          or empty means none
      * @return a result describing the current state and any next action
      */
     @Transactional
-    public ProteinAdaptationResult evaluate(ProteinAdaptationProfile profile) {
+    public ProteinAdaptationResult evaluate(
+            ProteinAdaptationProfile profile,
+            Collection<MedicalCondition> medicalConditions) {
+
+        // ── Clinical review: never progress automatically ─────────────
+        if (ProteinCalculator.anyRequireClinicalReview(medicalConditions)) {
+            return buildClinicalReviewBlockedResult(profile);
+        }
 
         List<ProteinWarning> warnings = new ArrayList<>();
 
@@ -211,7 +381,26 @@ public class ProteinAdaptationService {
         }
 
         // ── Advance the target by one increment ───────────────────────
-        BigDecimal newTarget = currentTarget.add(DEFAULT_INCREMENT_GRAMS);
+        repository.save(profile);
+        return advanceTarget(profile, LocalDate.now(), warnings);
+    }
+
+    /**
+     * Raises the current target by one increment, clamped to the long-term
+     * target, and resets the day counter. Mutates {@code profile} only; the
+     * caller is responsible for saving it.
+     *
+     * <p>Shared by {@link #evaluate} and {@link #evaluateScheduled} so the
+     * progression rule exists in exactly one place.</p>
+     */
+    private ProteinAdaptationResult advanceTarget(
+            ProteinAdaptationProfile profile,
+            LocalDate today,
+            List<ProteinWarning> warnings) {
+
+        BigDecimal longTermTarget = profile.getLongTermTargetGrams();
+        BigDecimal newTarget = profile.getCurrentTargetGrams()
+                .add(DEFAULT_INCREMENT_GRAMS);
 
         // Clamp to long-term target — never overshoot
         if (newTarget.compareTo(longTermTarget) >= 0) {
@@ -224,9 +413,7 @@ public class ProteinAdaptationService {
         profile.setCurrentTargetGrams(newTarget);
         profile.setDaysAtCurrentTarget(0);
         profile.setToleranceStatus(ProteinToleranceStatus.UNKNOWN);
-        profile.setLastTargetChangeAt(LocalDate.now());
-
-        repository.save(profile);
+        profile.setLastTargetChangeAt(today);
 
         boolean rampUpStillRequired =
                 newTarget.compareTo(longTermTarget) < 0;
@@ -235,10 +422,171 @@ public class ProteinAdaptationService {
                 profile,
                 rampUpStillRequired,
                 rampUpStillRequired
-                        ? LocalDate.now().plusDays(MIN_DAYS_BEFORE_INCREMENT)
+                        ? today.plusDays(MIN_DAYS_BEFORE_INCREMENT)
                         : null,
                 warnings
         );
+    }
+
+    // ================================================================
+    // evaluateScheduled()
+    // ================================================================
+
+    /**
+     * One idempotent tick of the scheduled ramp-up process.
+     *
+     * <p>Unlike {@link #evaluate}, which is a <em>manual</em> evaluation that
+     * never counts days, this method counts at most one day per profile per
+     * calendar date and advances the target when the minimum period has
+     * elapsed.</p>
+     *
+     * <h3>Order of checks</h3>
+     * <ol>
+     *   <li>{@code lastEvaluatedOn >= today} → {@code ALREADY_EVALUATED_TODAY};
+     *       nothing changes. A future date is treated the same way, so a clock
+     *       correction can never double-count.</li>
+     *   <li>Stage is {@code NOT_STARTED} or {@code TARGET_REACHED} →
+     *       {@code SKIPPED_NOT_RAMPING}; nothing changes.</li>
+     *   <li>Clinical review required (see
+     *       {@link ProteinCalculator#anyRequireClinicalReview}) →
+     *       {@code SKIPPED_CLINICAL_REVIEW}; nothing is written, so the
+     *       target, stage, tolerance, counter and marker are preserved.</li>
+     *   <li>Tolerance {@code MILD_ISSUES} or {@code SIGNIFICANT_ISSUES} →
+     *       {@code HELD_TOLERANCE}; no day is counted and nothing is
+     *       written.</li>
+     *   <li>Otherwise one day is counted and {@code lastEvaluatedOn} is set.
+     *       When the counter reaches {@link #MIN_DAYS_BEFORE_INCREMENT} the
+     *       target advances by one step (never beyond the long-term
+     *       target).</li>
+     * </ol>
+     *
+     * <h3>Atomicity and concurrency</h3>
+     * <p>The counter, the marker and any target change are written by a
+     * single {@code save} inside one transaction. {@code BaseEntity}'s
+     * {@code @Version} makes a concurrent tick for the same profile fail
+     * with an optimistic-locking exception instead of counting twice; the
+     * caller should treat that as "already handled".</p>
+     *
+     * @param profile           the profile to tick
+     * @param medicalConditions the user's current conditions, normally from
+     *                          a batch lookup; {@code null} means none
+     * @param today             the calendar date being processed
+     * @return the outcome and the profile's state afterwards
+     */
+    @Transactional
+    public ScheduledEvaluationResult evaluateScheduled(
+            ProteinAdaptationProfile profile,
+            Collection<MedicalCondition> medicalConditions,
+            LocalDate today) {
+
+        return evaluateScheduled(profile, medicalConditions, today,
+                resolveLatestReportedIntake(profile));
+    }
+
+    /**
+     * Same as {@link #evaluateScheduled(ProteinAdaptationProfile, Collection, LocalDate)}
+     * with the user's latest reported intake supplied by the caller.
+     *
+     * <p>Use this overload when the profile is detached (for example loaded by
+     * a batch query): the profile's lazy {@code healthProfile} is then never
+     * touched. The intake only affects the warnings in the returned result;
+     * it never changes the stored baseline, target, stage or counter.</p>
+     *
+     * @param latestReportedIntakeGrams the latest user-reported intake, or
+     *                                  {@code null} when unknown
+     */
+    @Transactional
+    public ScheduledEvaluationResult evaluateScheduled(
+            ProteinAdaptationProfile profile,
+            Collection<MedicalCondition> medicalConditions,
+            LocalDate today,
+            BigDecimal latestReportedIntakeGrams) {
+
+        // 1. Already evaluated today (or marker is in the future)
+        LocalDate lastEvaluatedOn = profile.getLastEvaluatedOn();
+        if (lastEvaluatedOn != null && !lastEvaluatedOn.isBefore(today)) {
+            return scheduledResult(
+                    ScheduledEvaluationOutcome.ALREADY_EVALUATED_TODAY,
+                    toResult(profile, latestReportedIntakeGrams));
+        }
+
+        // 2. Nothing to ramp
+        ProteinAdaptationStage stage = profile.getAdaptationStage();
+        if (stage != ProteinAdaptationStage.STARTING
+                && stage != ProteinAdaptationStage.ADAPTING) {
+            return scheduledResult(
+                    ScheduledEvaluationOutcome.SKIPPED_NOT_RAMPING,
+                    toResult(profile, latestReportedIntakeGrams));
+        }
+
+        // 3. Clinical review — existing guard, nothing is written
+        if (ProteinCalculator.anyRequireClinicalReview(medicalConditions)) {
+            return scheduledResult(
+                    ScheduledEvaluationOutcome.SKIPPED_CLINICAL_REVIEW,
+                    buildClinicalReviewBlockedResult(profile));
+        }
+
+        // 4. Tolerance hold — do not accumulate days, nothing is written
+        ProteinToleranceStatus tolerance = profile.getToleranceStatus();
+        if (tolerance == ProteinToleranceStatus.MILD_ISSUES
+                || tolerance == ProteinToleranceStatus.SIGNIFICANT_ISSUES) {
+            return scheduledResult(
+                    ScheduledEvaluationOutcome.HELD_TOLERANCE,
+                    toleranceHoldResult(profile, tolerance));
+        }
+
+        // 5. Count exactly one day and stamp the marker
+        int days = profile.getDaysAtCurrentTarget() + 1;
+        profile.setDaysAtCurrentTarget(days);
+        profile.setLastEvaluatedOn(today);
+
+        if (days < MIN_DAYS_BEFORE_INCREMENT) {
+            repository.save(profile);
+            return scheduledResult(
+                    ScheduledEvaluationOutcome.DAY_COUNTED,
+                    toResult(profile, latestReportedIntakeGrams));
+        }
+
+        // Minimum period elapsed — advance one step (clamped), same save
+        ProteinAdaptationResult advanced =
+                advanceTarget(profile, today, new ArrayList<>());
+        repository.save(profile);
+        return scheduledResult(
+                ScheduledEvaluationOutcome.TARGET_ADVANCED, advanced);
+    }
+
+    private ScheduledEvaluationResult scheduledResult(
+            ScheduledEvaluationOutcome outcome,
+            ProteinAdaptationResult adaptation) {
+
+        return new ScheduledEvaluationResult(outcome, adaptation);
+    }
+
+    /**
+     * Builds the result for a profile held by GI tolerance, with the same
+     * warning that {@link #evaluate} emits. Does not modify the profile.
+     */
+    private ProteinAdaptationResult toleranceHoldResult(
+            ProteinAdaptationProfile profile,
+            ProteinToleranceStatus tolerance) {
+
+        List<ProteinWarning> warnings = new ArrayList<>();
+        if (tolerance == ProteinToleranceStatus.SIGNIFICANT_ISSUES) {
+            warnings.add(new ProteinWarning(
+                    ProteinWarningCode.SIGNIFICANT_GI_SYMPTOMS,
+                    "Significant GI symptoms have been reported. Protein target is being held. " +
+                    "Please review protein sources, meal distribution, fibre intake, and fluid intake. " +
+                    "If symptoms persist, consult a registered dietitian or medical professional."
+            ));
+        } else {
+            warnings.add(new ProteinWarning(
+                    ProteinWarningCode.TOLERANCE_HOLD,
+                    "Mild GI symptoms reported. Protein target is being held at " +
+                    profile.getCurrentTargetGrams().toPlainString() + " g/day. " +
+                    "Consider reviewing protein sources and distribution across meals."
+            ));
+        }
+        return buildResult(profile, true, null, warnings);
     }
 
     // ================================================================
@@ -271,9 +619,13 @@ public class ProteinAdaptationService {
     /**
      * Increments the day counter for the current protein target.
      *
-     * <p>Intended to be called by a daily scheduled job.
-     * Only increments when the stage is {@code STARTING} or
+     * <p>Only increments when the stage is {@code STARTING} or
      * {@code ADAPTING} — stops counting once the target is reached.</p>
+     *
+     * <p><strong>Not idempotent and not for scheduled use.</strong> This
+     * method has no per-day guard, ignores tolerance and clinical review, and
+     * does not set {@code lastEvaluatedOn}. The scheduled process must call
+     * {@link #evaluateScheduled} instead.</p>
      *
      * @param profile the existing adaptation profile
      * @return the updated profile
@@ -305,6 +657,25 @@ public class ProteinAdaptationService {
      * for the API response without triggering a progression check).</p>
      */
     public ProteinAdaptationResult toResult(ProteinAdaptationProfile profile) {
+        return toResult(profile, resolveLatestReportedIntake(profile));
+    }
+
+    /**
+     * Same as {@link #toResult(ProteinAdaptationProfile)} but with the
+     * user's latest reported intake supplied by the caller.
+     *
+     * <p>The {@code CURRENT_INTAKE_UNKNOWN} warning follows
+     * {@code latestReportedIntakeGrams}, <em>not</em> the stored adaptation
+     * baseline. The profile is never modified, so the baseline, target,
+     * stage and day counter are unaffected by the reported intake.</p>
+     *
+     * @param profile                  the adaptation profile
+     * @param latestReportedIntakeGrams the latest user-reported intake;
+     *                                 {@code null} when unknown or cleared
+     */
+    public ProteinAdaptationResult toResult(
+            ProteinAdaptationProfile profile,
+            BigDecimal latestReportedIntakeGrams) {
 
         List<ProteinWarning> warnings = new ArrayList<>();
 
@@ -324,7 +695,7 @@ public class ProteinAdaptationService {
             }
         }
 
-        if (profile.getCurrentProteinGrams() == null) {
+        if (latestReportedIntakeGrams == null) {
             warnings.add(new ProteinWarning(
                     ProteinWarningCode.CURRENT_INTAKE_UNKNOWN,
                     "Current protein intake is unknown. " +
@@ -391,6 +762,69 @@ public class ProteinAdaptationService {
         }
 
         return startingTarget;
+    }
+
+    /**
+     * Reads the user's latest reported intake from the health profile
+     * ({@code currentNutritionProfile.currentProteinGrams}). Returns
+     * {@code null} when any link in the chain is absent.
+     */
+    private BigDecimal resolveLatestReportedIntake(
+            ProteinAdaptationProfile profile) {
+
+        HealthProfile healthProfile = profile.getHealthProfile();
+        if (healthProfile == null
+                || healthProfile.getCurrentNutritionProfile() == null) {
+            return null;
+        }
+        return healthProfile.getCurrentNutritionProfile().getCurrentProteinGrams();
+    }
+
+    /**
+     * Reads the user's current medical conditions through the profile's
+     * health profile. Returns an empty set when any link in the chain is
+     * absent.
+     */
+    private Set<MedicalCondition> resolveMedicalConditions(
+            ProteinAdaptationProfile profile) {
+
+        HealthProfile healthProfile = profile.getHealthProfile();
+        if (healthProfile == null || healthProfile.getMedicalProfile() == null) {
+            return Set.of();
+        }
+
+        Set<MedicalCondition> conditions =
+                healthProfile.getMedicalProfile().getMedicalConditions();
+        return conditions != null ? conditions : Set.of();
+    }
+
+    /**
+     * Builds the result returned when clinical review blocks progression.
+     * Reports the stored state unchanged and persists nothing.
+     */
+    private ProteinAdaptationResult buildClinicalReviewBlockedResult(
+            ProteinAdaptationProfile profile) {
+
+        ProteinAdaptationStage stage = profile.getAdaptationStage();
+        boolean rampPending = stage != ProteinAdaptationStage.TARGET_REACHED
+                && stage != ProteinAdaptationStage.NOT_STARTED;
+
+        return new ProteinAdaptationResult(
+                profile.getCurrentTargetGrams(),
+                profile.getLongTermTargetGrams(),
+                profile.getCurrentProteinGrams(),
+                stage,
+                rampPending,
+                null,
+                profile.getToleranceStatus(),
+                List.of(new ProteinWarning(
+                        ProteinWarningCode.CLINICAL_REVIEW_REQUIRED,
+                        "Protein target progression is paused because a medical " +
+                        "condition requires clinical review. The current target is " +
+                        "held until it has been reviewed by a qualified professional."
+                )),
+                true
+        );
     }
 
     /**

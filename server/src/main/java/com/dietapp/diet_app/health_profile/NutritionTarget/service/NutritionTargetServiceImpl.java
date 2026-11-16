@@ -1,5 +1,6 @@
 package com.dietapp.diet_app.health_profile.NutritionTarget.service;
 
+import com.dietapp.diet_app.common.exception.IncompleteProfileException;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.*;
 import com.dietapp.diet_app.health_profile.NutritionTarget.entity.ProteinAdaptationProfile;
 import com.dietapp.diet_app.health_profile.NutritionTarget.repository.ProteinAdaptationProfileRepository;
@@ -274,6 +275,7 @@ public class NutritionTargetServiceImpl
                 .status(safetyResult.status())
                 .requiresClinicalReview(
                         safetyResult.requiresClinicalReview()
+                        || proteinResult.requiresClinicalReview()
                         || fatResult.requiresClinicalReview()
                         || carbResult.requiresClinicalReview()
                 )
@@ -292,6 +294,12 @@ public class NutritionTargetServiceImpl
                 .nextEligibleProteinIncreaseDate(
                         proteinResult.nextEligibleIncreaseDate()
                 )
+                .currentProteinIntakeGrams(currentProteinGrams)
+                .adaptationBaselineProteinGrams(
+                        proteinResult.adaptationBaselineProteinGrams())
+                .adaptationBaselineOutOfDate(isBaselineOutOfDate(
+                        currentProteinGrams,
+                        proteinResult.adaptationBaselineProteinGrams()))
 
                 // Aggregated warnings
                 .warnings(allWarnings)
@@ -359,6 +367,18 @@ public class NutritionTargetServiceImpl
                 .map(ActivityProfile::getSportType)
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * Returns {@code true} when exactly one value is {@code null} or both
+     * are non-null and numerically different; {@code false} when both are
+     * {@code null} or numerically equal.
+     */
+    static boolean isBaselineOutOfDate(BigDecimal latestReported, BigDecimal baseline) {
+        if (latestReported == null || baseline == null) {
+            return latestReported != baseline;
+        }
+        return latestReported.compareTo(baseline) != 0;
     }
 
     /**
@@ -482,20 +502,27 @@ public class NutritionTargetServiceImpl
             PersonalProfile    personalProfile,
             FitnessGoalProfile fitnessGoalProfile) {
 
+        // IncompleteProfileException extends IllegalStateException and is
+        // mapped to a 4xx; the field names are fixed, client-safe identifiers.
         if (personalProfile == null) {
-            throw new IllegalStateException("Personal profile is incomplete.");
+            throw new IncompleteProfileException(
+                    "Personal profile is incomplete.", List.of("personalProfile"));
         }
         if (fitnessGoalProfile == null) {
-            throw new IllegalStateException("Fitness goal profile is incomplete.");
+            throw new IncompleteProfileException(
+                    "Fitness goal profile is incomplete.", List.of("fitnessGoalProfile"));
         }
         if (personalProfile.getWeightKg() == null) {
-            throw new IllegalStateException("Current weight is required.");
+            throw new IncompleteProfileException(
+                    "Current weight is required.", List.of("weightKg"));
         }
         if (personalProfile.getHeightCm() == null) {
-            throw new IllegalStateException("Height is required.");
+            throw new IncompleteProfileException(
+                    "Height is required.", List.of("heightCm"));
         }
         if (personalProfile.getGender() == null) {
-            throw new IllegalStateException("Gender is required.");
+            throw new IncompleteProfileException(
+                    "Gender is required.", List.of("gender"));
         }
     }
 }

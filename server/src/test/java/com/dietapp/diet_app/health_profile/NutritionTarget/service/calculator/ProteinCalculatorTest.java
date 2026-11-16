@@ -670,6 +670,19 @@ class ProteinCalculatorTest {
             findByHealthProfileId(java.util.UUID id) {
                 return java.util.Optional.ofNullable(stored);
             }
+            @Override
+            public java.util.List<com.dietapp.diet_app.health_profile.NutritionTarget
+                    .scheduler.EligibleProteinProfile>
+            findEligibleForScheduledEvaluation(
+                    java.util.Collection<com.dietapp.diet_app.health_profile
+                            .NutritionTarget.enums.ProteinAdaptationStage> stages,
+                    java.time.LocalDate today,
+                    java.util.UUID afterId,
+                    org.springframework.data.domain.Pageable pageable) {
+                return java.util.List.of();
+            }
+
+
 
             // ── JpaRepository pass-through stubs ──────────────────────
 

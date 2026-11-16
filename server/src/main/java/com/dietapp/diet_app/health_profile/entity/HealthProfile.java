@@ -105,11 +105,11 @@ public class HealthProfile extends BaseEntity {
     )
     private SupplementProfile supplementProfile;
 
-    @OneToOne(
-            mappedBy = "healthProfile",
-            cascade  = CascadeType.ALL,
-            orphanRemoval = true
-    )
+    /**
+     * Embedded in {@code health_profiles}: column {@code current_protein_grams}.
+     * Null when no intake has been recorded (all embedded columns null).
+     */
+    @Embedded
     private CurrentNutritionProfile currentNutritionProfile;
 
 

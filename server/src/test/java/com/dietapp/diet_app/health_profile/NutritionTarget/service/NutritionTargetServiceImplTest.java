@@ -765,6 +765,96 @@ class NutritionTargetServiceImplTest {
                 "requiresClinicalReview must be true when any pipeline layer requires it");
     }
 
+    // ── 21b. requiresClinicalReview = true when protein layer requires it
+
+    @Test
+    void requiresClinicalReview_whenProteinLayerRequiresIt() {
+        PersonalProfile pp = PersonalProfile.builder()
+                .weightKg(WEIGHT).heightCm(172.0).gender(Gender.MALE).build();
+        FitnessGoalProfile fg = FitnessGoalProfile.builder()
+                .primaryGoal(Goal.FAT_LOSS).build();
+        HealthProfile hp = healthProfileWith(pp, fg);
+
+        // Every other layer is SAFE / no review
+        stubHappyPath(hp);
+
+        ProteinAdaptationResult proteinWithReview = new ProteinAdaptationResult(
+                PROTEIN, LONG_PROTEIN, null,
+                ProteinAdaptationStage.STARTING, true, null,
+                ProteinToleranceStatus.UNKNOWN,
+                List.of(new ProteinWarning(
+                        ProteinWarningCode.CLINICAL_REVIEW_REQUIRED,
+                        "Clinical review required.")),
+                true
+        );
+        when(macroCalculator.calculateProtein(any(), any(), any()))
+                .thenReturn(proteinWithReview);
+        when(macroCalculator.resolveNutritionTargetProtein(proteinWithReview))
+                .thenReturn(PROTEIN);
+
+        NutritionTargetResponse r = service.calculateForCurrentUser();
+
+        assertTrue(r.requiresClinicalReview(),
+                "Protein-layer clinical review must reach the response");
+    }
+
+    // ── 21c. Kidney / liver protein warnings reach the response ──────
+
+    @Test
+    void kidneyAndLiverProteinWarnings_reachResponse() {
+        PersonalProfile pp = PersonalProfile.builder()
+                .weightKg(WEIGHT).heightCm(172.0).gender(Gender.MALE).build();
+        FitnessGoalProfile fg = FitnessGoalProfile.builder()
+                .primaryGoal(Goal.FAT_LOSS).build();
+        HealthProfile hp = healthProfileWith(pp, fg);
+
+        stubHappyPath(hp);
+
+        ProteinAdaptationResult proteinWithWarnings = new ProteinAdaptationResult(
+                PROTEIN, LONG_PROTEIN, null,
+                ProteinAdaptationStage.STARTING, true, null,
+                ProteinToleranceStatus.UNKNOWN,
+                List.of(
+                        new ProteinWarning(ProteinWarningCode.KIDNEY_DISEASE_DETECTED,
+                                "Kidney disease is present."),
+                        new ProteinWarning(ProteinWarningCode.LIVER_DISEASE_DETECTED,
+                                "Liver disease is present.")),
+                true
+        );
+        when(macroCalculator.calculateProtein(any(), any(), any()))
+                .thenReturn(proteinWithWarnings);
+        when(macroCalculator.resolveNutritionTargetProtein(proteinWithWarnings))
+                .thenReturn(PROTEIN);
+
+        NutritionTargetResponse r = service.calculateForCurrentUser();
+
+        assertTrue(r.warnings().stream()
+                .anyMatch(w -> w.message().contains("[Protein]")
+                        && w.message().contains("Kidney disease")));
+        assertTrue(r.warnings().stream()
+                .anyMatch(w -> w.message().contains("[Protein]")
+                        && w.message().contains("Liver disease")));
+    }
+
+    // ── 21d. Normal user: protein layer adds no review flag ──────────
+
+    @Test
+    void normalUser_proteinLayerDoesNotSetClinicalReview() {
+        PersonalProfile pp = PersonalProfile.builder()
+                .weightKg(WEIGHT).heightCm(172.0).gender(Gender.MALE).build();
+        FitnessGoalProfile fg = FitnessGoalProfile.builder()
+                .primaryGoal(Goal.FAT_LOSS).build();
+        HealthProfile hp = healthProfileWith(pp, fg);
+
+        stubHappyPath(hp);
+
+        NutritionTargetResponse r = service.calculateForCurrentUser();
+
+        assertFalse(r.requiresClinicalReview());
+    }
+
+
+
     // ── 22. requiresClinicalReview = true when safety layer requires it
 
     @Test

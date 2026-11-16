@@ -4,6 +4,7 @@ import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.Carbohyd
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.FatCalculationResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinAdaptationResult;
 import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinTargetResult;
+import com.dietapp.diet_app.health_profile.NutritionTarget.dto.response.ProteinWarning;
 import com.dietapp.diet_app.health_profile.NutritionTarget.entity.ProteinAdaptationProfile;
 import com.dietapp.diet_app.health_profile.NutritionTarget.enums.ProteinAdaptationStage;
 import com.dietapp.diet_app.health_profile.NutritionTarget.service.ProteinAdaptationService;
@@ -12,6 +13,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Orchestrates macro-nutrient calculation for a user.
@@ -73,9 +77,15 @@ public class MacroCalculator {
      * @param healthProfile      the user's full health profile
      * @param input              protein calculation parameters
      * @param existingAdaptation the current adaptation profile, if one exists;
-     *                           pass {@code null} to force initialisation
+     *                           pass {@code null} to create one. An existing
+     *                           profile is never reset: its long-term target is
+     *                           synchronised with the fresh calculation, except
+     *                           that a {@code NOT_STARTED} profile is initialised
+     *                           once the user's current intake becomes known
      * @return the current recommended protein target for use in
-     *         {@code NutritionTarget.proteinGrams}
+     *         {@code NutritionTarget.proteinGrams}, carrying the warnings and
+     *         clinical-review flag from both the long-term calculation and
+     *         the adaptation service
      */
     public ProteinAdaptationResult calculateProtein(
             HealthProfile healthProfile,
@@ -85,9 +95,15 @@ public class MacroCalculator {
         ProteinTargetResult longTermResult =
                 proteinCalculator.calculate(input);
 
-        if (existingAdaptation == null
-                || existingAdaptation.getAdaptationStage()
-                        == ProteinAdaptationStage.NOT_STARTED) {
+        ProteinAdaptationResult adaptationResult;
+
+        boolean needsInitialisation =
+                existingAdaptation == null
+                        || (existingAdaptation.getAdaptationStage()
+                                == ProteinAdaptationStage.NOT_STARTED
+                            && input.currentProteinGrams() != null);
+
+        if (needsInitialisation) {
 
             ProteinAdaptationProfile profile =
                     proteinAdaptationService.initialise(
@@ -95,10 +111,49 @@ public class MacroCalculator {
                             longTermResult,
                             input.currentProteinGrams()
                     );
-            return proteinAdaptationService.toResult(profile);
+            adaptationResult = proteinAdaptationService.toResult(
+                    profile, input.currentProteinGrams());
+        } else {
+            proteinAdaptationService.synchroniseLongTermTarget(
+                    existingAdaptation, longTermResult);
+            adaptationResult = proteinAdaptationService.toResult(
+                    existingAdaptation, input.currentProteinGrams());
         }
 
-        return proteinAdaptationService.toResult(existingAdaptation);
+        return withLongTermSafety(adaptationResult, longTermResult);
+    }
+
+    /**
+     * Returns a copy of {@code adaptationResult} that additionally carries
+     * the long-term calculation's warnings and clinical-review flag.
+     *
+     * <p>Adaptation warnings are kept first; calculator warnings are appended.
+     * Exact duplicates (same code and message) are dropped.</p>
+     */
+    private ProteinAdaptationResult withLongTermSafety(
+            ProteinAdaptationResult adaptationResult,
+            ProteinTargetResult longTermResult) {
+
+        Set<ProteinWarning> merged = new LinkedHashSet<>();
+        if (adaptationResult.warnings() != null) {
+            merged.addAll(adaptationResult.warnings());
+        }
+        if (longTermResult.warnings() != null) {
+            merged.addAll(longTermResult.warnings());
+        }
+
+        return new ProteinAdaptationResult(
+                adaptationResult.currentTargetGrams(),
+                adaptationResult.longTermTargetGrams(),
+                adaptationResult.adaptationBaselineProteinGrams(),
+                adaptationResult.adaptationStage(),
+                adaptationResult.rampUpRequired(),
+                adaptationResult.nextEligibleIncreaseDate(),
+                adaptationResult.toleranceStatus(),
+                List.copyOf(merged),
+                adaptationResult.requiresClinicalReview()
+                        || longTermResult.requiresClinicalReview()
+        );
     }
 
     /**
